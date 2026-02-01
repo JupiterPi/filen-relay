@@ -1,8 +1,9 @@
+use crate::common::{ServerState, ServerType};
+#[cfg(feature = "server")]
+use crate::servers::SERVER_MANAGER;
 use anyhow::{anyhow, Context};
 use dioxus::{fullstack::response::Response, prelude::*};
 use serde::{Deserialize, Serialize};
-
-use crate::db;
 
 #[cfg(feature = "server")]
 mod session {
@@ -95,6 +96,7 @@ mod session {
 
 #[cfg(feature = "server")]
 pub(crate) fn serve() {
+    //SERVER_MANAGER.get_or_init(crate::servers::ServerManager::new);
     dioxus::serve(|| async move {
         Ok(dioxus::server::router(crate::frontend::App).layer(
             dioxus_server::axum::middleware::from_fn(session::extract_session_token),
@@ -147,7 +149,7 @@ pub(crate) async fn login(
         },
         Err(e) => Err(anyhow!(e)).context("Failed to log in"),
         Ok(_client) => {
-            let allowed_users = db::conn::get_allowed_users()
+            let allowed_users = crate::db::get_allowed_users()
                 .map_err(|e| anyhow::anyhow!("Failed to get allowed users from database: {}", e))?;
             let is_allowed = if allowed_users.is_empty() {
                 true
@@ -170,20 +172,42 @@ pub(crate) async fn login(
 }
 
 #[get("/api/servers", session: session::Session)]
-pub(crate) async fn get_servers() -> Result<Vec<db::Server>, anyhow::Error> {
-    let servers = db::conn::get_servers_for_user(&session.filen_email)
-        .map_err(|e| anyhow::anyhow!("Failed to get servers from database: {}", e))?;
-    Ok(servers)
+pub(crate) async fn get_servers() -> Result<Vec<ServerState>> {
+    Ok(SERVER_MANAGER
+        .get_or_init(crate::servers::ServerManager::new)
+        .get_server_states()
+        .borrow()
+        .iter()
+        .filter(|server| server.spec.filen_email == session.filen_email)
+        .cloned()
+        .collect())
 }
 
-#[post("/api/servers/create", session: session::Session)]
-pub(crate) async fn create_server(r#type: String) -> Result<(), anyhow::Error> {
-    db::conn::create_server(
-        "New Server",
-        &r#type,
-        &session.filen_email,
-        &session.filen_password,
-    )
-    .map_err(|e| anyhow::anyhow!("Failed to create server in database: {}", e))?;
-    Ok(())
+#[post("/api/servers/add", session: session::Session)]
+pub(crate) async fn add_server(name: String, server_type: ServerType) -> Result<(), anyhow::Error> {
+    SERVER_MANAGER
+        .get_or_init(crate::servers::ServerManager::new)
+        .update_server_spec(crate::servers::ServerSpecUpdate::Add {
+            name,
+            server_type,
+            filen_email: session.filen_email,
+            filen_password: session.filen_password,
+        })
+        .await
+}
+
+#[post("/api/servers/remove", session: session::Session)]
+pub(crate) async fn remove_server(id: i32) -> Result<(), anyhow::Error> {
+    SERVER_MANAGER
+        .get_or_init(crate::servers::ServerManager::new)
+        .get_server_states()
+        .borrow()
+        .iter()
+        .find(|s| s.spec.id == id && s.spec.filen_email == session.filen_email)
+        .ok_or_else(|| anyhow::anyhow!("Server not found or not owned by user"))?;
+    SERVER_MANAGER
+        .get()
+        .unwrap()
+        .update_server_spec(crate::servers::ServerSpecUpdate::Remove(id))
+        .await
 }

@@ -14,8 +14,11 @@ serde = { version = "1.0.228", features = ["derive"] }
 filen-sdk-rs = { git = "https://github.com/FilenCloudDienste/filen-rs", optional = true }
 filen-types = { git = "https://github.com/FilenCloudDienste/filen-rs", optional = true }
 uuid = "1.20.0"
+strum = "0.27.2"
+strum_macros = "0.27.2"
+tokio = { version = "1.49.0", features = ["macros"], optional = true }
 
 [features]
 default = ["web", "server"]
 web = ["dioxus/web"]
-server = ["dioxus/server", "rusqlite", "filen-sdk-rs", "filen-types"]
+server = ["dioxus/server", "rusqlite", "filen-sdk-rs", "filen-types", "tokio"]

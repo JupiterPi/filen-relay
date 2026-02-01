@@ -4,6 +4,9 @@ use dioxus::{
     logger::tracing::{self},
     prelude::*,
 };
+use strum::IntoEnumIterator as _;
+
+use crate::common::ServerType;
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
@@ -81,6 +84,7 @@ fn Home() -> Element {
                 "Welcome to Filen Relay, {auth.email}!"
             }
             Servers {}
+            CreateServerForm {}
         } else {
             div {
                 class: "italic",
@@ -174,11 +178,29 @@ fn Servers() -> Element {
     let servers = &*servers.read();
     match servers {
         Some(Ok(servers)) => rsx! {
-            for server in servers {
-                div {
-                    class: "border p-4 mb-4",
-                    h2 { class: "font-bold text-lg", "{server.name}" }
-                    p { "Type: {server.r#type}" }
+            div {
+                class: "flex flex-wrap gap-4",
+                for server in servers.clone() {
+                    div {
+                        class: "border p-4 inline-flex flex-col w-64",
+                        h2 { class: "font-bold text-lg", "{server.spec.name}" }
+                        p { "Type: {server.spec.server_type}" }
+                        p { "Status: {server.status}" }
+                        button {
+                            class: "_button mt-2",
+                            onclick: move |_| async move {
+                                match crate::api::remove_server(server.spec.id).await {
+                                    Ok(_) => {
+                                        tracing::info!("Server removed successfully");
+                                    },
+                                    Err(err) => {
+                                        tracing::error!("Failed to remove server: {}", err);
+                                    },
+                                };
+                            },
+                            "Remove Server"
+                        }
+                    }
                 }
             }
             if servers.is_empty() {
@@ -194,5 +216,57 @@ fn Servers() -> Element {
         None => rsx! {
             div { "Loading servers..." }
         },
+    }
+}
+
+#[component]
+fn CreateServerForm() -> Element {
+    let mut name = use_signal(|| "".to_string());
+    let mut server_type = use_signal(|| ServerType::Http);
+
+    rsx! {
+        form {
+            class: "flex flex-col gap-2",
+            onsubmit: move |e| async move {
+                e.prevent_default();
+                match crate::api::add_server(name.read().clone(), server_type.read().cloned()).await {
+                    Ok(_) => {
+                        tracing::info!("Server created successfully");
+                    },
+                    Err(err) => {
+                        tracing::error!("Failed to create server: {}", err);
+                    },
+                };
+            },
+            div {
+                label { "Server Name:" }
+                input {
+                    class: "_input w-full",
+                    r#type: "text",
+                    value: "{name}",
+                    oninput: move |e| name.set(e.value().clone()),
+                }
+            }
+            div {
+                label { "Server Type:" }
+                select {
+                    class: "_input w-full",
+                    onchange: move |e| {
+                        server_type.set(ServerType::from(e.value().as_str()));
+                    },
+                    for server_type in ServerType::iter() {
+                        option {
+                            value: server_type.to_string(),
+                            "{server_type.to_string()}"
+                        }
+                    }
+                }
+            }
+            button {
+                class: "_button",
+                r#type: "submit",
+                "Create Server"
+            }
+        }
     }
 }
