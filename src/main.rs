@@ -7,5 +7,5 @@ fn main() {
     dioxus::launch(frontend::App);
 
     #[cfg(feature = "server")]
-    dioxus::serve(|| async move { Ok(dioxus::server::router(frontend::App)) })
+    api::serve();
 }

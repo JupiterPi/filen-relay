@@ -1,1 +1,21 @@
 @import "tailwindcss";
+
+@theme {
+    --font-sans: "Inter var", sans-serif;
+}
+
+body {
+    @apply bg-[#050505] text-gray-300 font-sans;
+}
+
+._button {
+    @apply mt-2 bg-blue-600 text-white p-2 rounded-lg cursor-pointer hover:bg-blue-700;
+}
+
+._button:disabled {
+    @apply opacity-50 cursor-not-allowed;
+}
+
+._input {
+    @apply p-2 rounded-lg bg-gray-900 text-gray-200 border border-gray-700 focus:outline-none focus:border-blue-500;
+}

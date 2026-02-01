@@ -9,10 +9,13 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.100"
 dioxus = { version = "0.7.1", features = ["router", "fullstack"] }
-rusqlite = { version = "0.38.0", features = ["bundled"] }
+rusqlite = { version = "0.38.0", features = ["bundled"], optional = true }
 serde = { version = "1.0.228", features = ["derive"] }
+filen-sdk-rs = { git = "https://github.com/FilenCloudDienste/filen-rs", optional = true }
+filen-types = { git = "https://github.com/FilenCloudDienste/filen-rs", optional = true }
+uuid = "1.20.0"
 
 [features]
 default = ["web", "server"]
 web = ["dioxus/web"]
-server = ["dioxus/server"]
+server = ["dioxus/server", "rusqlite", "filen-sdk-rs", "filen-types"]

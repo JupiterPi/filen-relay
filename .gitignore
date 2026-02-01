@@ -7,3 +7,6 @@
 **/*.rs.bk
 
 *.db
+
+# ignore tailwind output
+/assets/tailwind.css

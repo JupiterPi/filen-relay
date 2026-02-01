@@ -4,6 +4,7 @@ use dioxus::fullstack::serde::{Deserialize, Serialize};
 pub(crate) struct Server {
     pub id: i32,
     pub name: String,
+    pub r#type: String,
     pub filen_email: String,
     pub filen_password: String,
 }
@@ -23,6 +24,7 @@ pub(crate) mod conn {
             CREATE TABLE IF NOT EXISTS servers (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
+                type TEXT NOT NULL,
                 filen_email TEXT NOT NULL,
                 filen_password TEXT NOT NULL
             );
@@ -75,13 +77,14 @@ pub(crate) mod conn {
     pub(crate) fn get_servers() -> Result<Vec<super::Server>> {
         DB.with(|db| {
             let mut stmt =
-                db.prepare("SELECT id, name, filen_email, filen_password FROM servers")?;
+                db.prepare("SELECT id, name, type, filen_email, filen_password FROM servers")?;
             let server_iter = stmt.query_map([], |row| {
                 Ok(super::Server {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    filen_email: row.get(2)?,
-                    filen_password: row.get(3)?,
+                    r#type: row.get(2)?,
+                    filen_email: row.get(3)?,
+                    filen_password: row.get(4)?,
                 })
             })?;
 
@@ -96,14 +99,15 @@ pub(crate) mod conn {
     pub(crate) fn get_servers_for_user(email: &str) -> Result<Vec<super::Server>> {
         DB.with(|db| {
             let mut stmt = db.prepare(
-                "SELECT id, name, filen_email, filen_password FROM servers WHERE filen_email = ?1",
+                "SELECT id, name, type, filen_email, filen_password FROM servers WHERE filen_email = ?1",
             )?;
             let server_iter = stmt.query_map(rusqlite::params![email], |row| {
                 Ok(super::Server {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    filen_email: row.get(2)?,
-                    filen_password: row.get(3)?,
+                    r#type: row.get(2)?,
+                    filen_email: row.get(3)?,
+                    filen_password: row.get(4)?,
                 })
             })?;
 
@@ -115,11 +119,16 @@ pub(crate) mod conn {
         })
     }
 
-    pub(crate) fn create_server(name: &str, filen_email: &str, filen_password: &str) -> Result<()> {
+    pub(crate) fn create_server(
+        name: &str,
+        r#type: &str,
+        filen_email: &str,
+        filen_password: &str,
+    ) -> Result<()> {
         DB.with(|db| {
             db.execute(
-                "INSERT INTO servers (name, filen_email, filen_password) VALUES (?1, ?2, ?3)",
-                rusqlite::params![name, filen_email, filen_password],
+                "INSERT INTO servers (name, type, filen_email, filen_password) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![name, r#type, filen_email, filen_password],
             )?;
             Ok(())
         })
