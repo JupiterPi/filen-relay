@@ -2,7 +2,10 @@ use crate::common::{ServerState, ServerType};
 #[cfg(feature = "server")]
 use crate::servers::SERVER_MANAGER;
 use anyhow::{anyhow, Context};
-use dioxus::{fullstack::response::Response, prelude::*};
+use dioxus::{
+    fullstack::{response::Response, JsonEncoding, Streaming},
+    prelude::*,
+};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "server")]
@@ -173,14 +176,39 @@ pub(crate) async fn login(
 }
 
 #[get("/api/servers", session: session::Session)]
-pub(crate) async fn get_servers() -> Result<Vec<ServerState>> {
-    Ok(SERVER_MANAGER
-        .get_server_states()
-        .borrow()
-        .iter()
-        .filter(|server| server.spec.filen_email == session.filen_email)
-        .cloned()
-        .collect())
+pub(crate) async fn get_servers() -> Result<Streaming<Vec<ServerState>, JsonEncoding>> {
+    Ok(Streaming::spawn(|tx| async move {
+        let send_server_states = || {
+            let server_states = SERVER_MANAGER
+                .get_server_states()
+                .borrow()
+                .iter()
+                .filter(|s| s.spec.filen_email == session.filen_email)
+                .cloned()
+                .collect::<Vec<ServerState>>();
+            if let Err(e) = tx.unbounded_send(server_states) {
+                dioxus::logger::tracing::error!("Failed to send server states: {}", e);
+                false
+            } else {
+                true
+            }
+        };
+        let _ = send_server_states();
+        let mut server_states = SERVER_MANAGER.get_server_states();
+        loop {
+            match server_states.changed().await {
+                Err(e) => {
+                    dioxus::logger::tracing::error!("Failed to watch server states: {}", e);
+                    break;
+                }
+                Ok(()) => {
+                    if !send_server_states() {
+                        break;
+                    }
+                }
+            }
+        }
+    }))
 }
 
 #[post("/api/servers/add", session: session::Session)]

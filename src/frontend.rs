@@ -6,7 +6,7 @@ use dioxus::{
 };
 use strum::IntoEnumIterator as _;
 
-use crate::common::ServerType;
+use crate::common::{ServerState, ServerType};
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
@@ -80,11 +80,14 @@ fn Home() -> Element {
     rsx! {
         if let Some(auth) = AUTH.read().deref() {
             div {
-                class: "italic mb-3",
-                "Welcome to Filen Relay, {auth.email}!"
+                class: "flex flex-col gap-4",
+                div {
+                    class: "italic",
+                    "Welcome to Filen Relay, {auth.email}!"
+                }
+                Servers {}
+                CreateServerForm {}
             }
-            Servers {}
-            CreateServerForm {}
         } else {
             div {
                 class: "italic",
@@ -174,47 +177,66 @@ fn Login() -> Element {
 
 #[component]
 fn Servers() -> Element {
-    let servers = use_resource(move || async move { crate::api::get_servers().await });
-    let servers = &*servers.read();
-    match servers {
-        Some(Ok(servers)) => rsx! {
-            div {
-                class: "flex flex-wrap gap-4",
-                for server in servers.clone() {
-                    div {
-                        class: "border p-4 inline-flex flex-col w-64",
-                        h2 { class: "font-bold text-lg", "{server.spec.name}" }
-                        p { "Type: {server.spec.server_type}" }
-                        p { "Status: {server.status}" }
-                        button {
-                            class: "_button mt-2",
-                            onclick: move |_| async move {
-                                match crate::api::remove_server(server.spec.id).await {
-                                    Ok(_) => {
-                                        tracing::info!("Server removed successfully");
-                                    },
-                                    Err(err) => {
-                                        tracing::error!("Failed to remove server: {}", err);
-                                    },
-                                };
-                            },
-                            "Remove Server"
+    let mut servers = use_signal(|| None::<Vec<ServerState>>);
+    use_future(move || async move {
+        match crate::api::get_servers().await {
+            Ok(mut servers_stream) => loop {
+                match servers_stream.next().await {
+                    Some(Ok(new_servers)) => {
+                        servers.set(Some(new_servers));
+                    }
+                    Some(Err(err)) => {
+                        tracing::error!("Error receiving server states: {}", err);
+                        break;
+                    }
+                    None => {
+                        tracing::info!("Server states stream ended");
+                        break;
+                    }
+                }
+            },
+            Err(err) => {
+                tracing::error!("Failed to fetch servers: {}", err);
+            }
+        }
+    });
+    let servers = &*servers;
+
+    match servers() {
+        Some(servers) => rsx! {
+            if !servers.is_empty() {
+                div {
+                    class: "flex flex-wrap gap-4",
+                    for server in servers.clone() {
+                        div {
+                            class: "border p-4 inline-flex flex-col w-64 rounded-lg",
+                            h2 { class: "font-bold text-lg", "{server.spec.name}" }
+                            p { class: "font-mono", "#{server.spec.id}" }
+                            p { "Type: {server.spec.server_type}" }
+                            p { "Status: {server.status}" }
+                            button {
+                                class: "_button mt-2",
+                                onclick: move |_| async move {
+                                    match crate::api::remove_server(server.spec.id).await {
+                                        Ok(_) => {
+                                            tracing::info!("Server removed successfully");
+                                        },
+                                        Err(err) => {
+                                            tracing::error!("Failed to remove server: {}", err);
+                                        },
+                                    };
+                                },
+                                "Remove Server"
+                            }
                         }
                     }
                 }
-            }
-            if servers.is_empty() {
-                div { "No servers available." }
-            }
-        },
-        Some(Err(e)) => rsx! {
-            div {
-                class: "text-red-500",
-                "Failed to load servers: {e}"
+            } else {
+                div { class: "text-gray-500", "No servers available." }
             }
         },
         None => rsx! {
-            div { "Loading servers..." }
+            div { class: "text-gray-500", "Loading servers..." }
         },
     }
 }
@@ -226,12 +248,20 @@ fn CreateServerForm() -> Element {
 
     rsx! {
         form {
-            class: "flex flex-col gap-2",
+            class: "flex flex-col gap-2 border p-4 rounded-lg",
             onsubmit: move |e| async move {
                 e.prevent_default();
-                match crate::api::add_server(name.read().clone(), server_type.read().cloned()).await {
+                let name_ = name.read().clone();
+                if name_.is_empty() {
+                    tracing::error!("Server name cannot be empty");
+                    return;
+                }
+                let server_type_ = server_type.read().clone();
+                match crate::api::add_server(name_.to_string(), server_type_.clone()).await {
                     Ok(_) => {
                         tracing::info!("Server created successfully");
+                        name.set("".to_string());
+                        server_type.set(ServerType::Http);
                     },
                     Err(err) => {
                         tracing::error!("Failed to create server: {}", err);
@@ -239,25 +269,29 @@ fn CreateServerForm() -> Element {
                 };
             },
             div {
-                label { "Server Name:" }
-                input {
-                    class: "_input w-full",
-                    r#type: "text",
-                    value: "{name}",
-                    oninput: move |e| name.set(e.value().clone()),
+                class: "flex items-stretch gap-2",
+                div {
+                    label { "Server Name:" }
+                    input {
+                        class: "mt-1 _input",
+                        r#type: "text",
+                        placeholder: "My Server",
+                        value: "{name}",
+                        oninput: move |e| name.set(e.value().clone()),
+                    }
                 }
-            }
-            div {
-                label { "Server Type:" }
-                select {
-                    class: "_input w-full",
-                    onchange: move |e| {
-                        server_type.set(ServerType::from(e.value().as_str()));
-                    },
-                    for server_type in ServerType::iter() {
-                        option {
-                            value: server_type.to_string(),
-                            "{server_type.to_string()}"
+                div {
+                    label { "Server Type:" }
+                    select {
+                        class: "mt-1 _input w-full",
+                        onchange: move |e| {
+                            server_type.set(ServerType::from(e.value().as_str()));
+                        },
+                        for server_type in ServerType::iter() {
+                            option {
+                                value: server_type.to_string(),
+                                "{server_type.to_string()}"
+                            }
                         }
                     }
                 }
@@ -265,6 +299,7 @@ fn CreateServerForm() -> Element {
             button {
                 class: "_button",
                 r#type: "submit",
+                disabled: name.read().is_empty(),
                 "Create Server"
             }
         }

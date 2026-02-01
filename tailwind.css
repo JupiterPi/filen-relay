@@ -17,5 +17,5 @@ body {
 }
 
 ._input {
-    @apply p-2 rounded-lg bg-gray-900 text-gray-200 border border-gray-700 focus:outline-none focus:border-blue-500;
+    @apply p-2 rounded-lg bg-gray-900 text-gray-200 border border-gray-700 focus:outline-none focus:border-blue-500 h-10 w-full;
 }
