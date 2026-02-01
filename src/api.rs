@@ -96,8 +96,9 @@ mod session {
 
 #[cfg(feature = "server")]
 pub(crate) fn serve() {
-    //SERVER_MANAGER.get_or_init(crate::servers::ServerManager::new);
     dioxus::serve(|| async move {
+        SERVER_MANAGER.init(crate::servers::ServerManager::new);
+
         Ok(dioxus::server::router(crate::frontend::App).layer(
             dioxus_server::axum::middleware::from_fn(session::extract_session_token),
         ))
@@ -174,7 +175,6 @@ pub(crate) async fn login(
 #[get("/api/servers", session: session::Session)]
 pub(crate) async fn get_servers() -> Result<Vec<ServerState>> {
     Ok(SERVER_MANAGER
-        .get_or_init(crate::servers::ServerManager::new)
         .get_server_states()
         .borrow()
         .iter()
@@ -186,7 +186,6 @@ pub(crate) async fn get_servers() -> Result<Vec<ServerState>> {
 #[post("/api/servers/add", session: session::Session)]
 pub(crate) async fn add_server(name: String, server_type: ServerType) -> Result<(), anyhow::Error> {
     SERVER_MANAGER
-        .get_or_init(crate::servers::ServerManager::new)
         .update_server_spec(crate::servers::ServerSpecUpdate::Add {
             name,
             server_type,
@@ -199,15 +198,12 @@ pub(crate) async fn add_server(name: String, server_type: ServerType) -> Result<
 #[post("/api/servers/remove", session: session::Session)]
 pub(crate) async fn remove_server(id: i32) -> Result<(), anyhow::Error> {
     SERVER_MANAGER
-        .get_or_init(crate::servers::ServerManager::new)
         .get_server_states()
         .borrow()
         .iter()
         .find(|s| s.spec.id == id && s.spec.filen_email == session.filen_email)
         .ok_or_else(|| anyhow::anyhow!("Server not found or not owned by user"))?;
     SERVER_MANAGER
-        .get()
-        .unwrap()
         .update_server_spec(crate::servers::ServerSpecUpdate::Remove(id))
         .await
 }

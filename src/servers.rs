@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 use anyhow::{Context, Result};
 use dioxus::logger::tracing;
 use tokio::sync::watch;
@@ -8,8 +6,10 @@ use crate::common::ServerSpec;
 use crate::common::ServerState;
 use crate::common::ServerStatus;
 use crate::common::ServerType;
+use crate::util::UnwrapOnceLock;
 
-pub(crate) static SERVER_MANAGER: OnceLock<ServerManager> = OnceLock::new();
+pub(crate) static SERVER_MANAGER: UnwrapOnceLock<ServerManager> =
+    UnwrapOnceLock::<ServerManager>::new();
 
 pub(crate) struct ServerManager {
     server_states_rx: tokio::sync::watch::Receiver<Vec<ServerState>>,
