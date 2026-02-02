@@ -253,9 +253,7 @@ impl ServerManager {
         log_info("Server started successfully.");
         self.server_states_tx.send_modify(|server_states| {
             if let Some(s) = server_states.iter_mut().find(|s| s.spec.id == spec.id) {
-                s.status = ServerStatus::Running {
-                    connection_url: format!("http://127.0.0.1:{}", port),
-                };
+                s.status = ServerStatus::Running { port };
             }
         });
 

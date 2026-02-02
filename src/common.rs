@@ -48,21 +48,8 @@ pub(crate) struct ServerState {
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) enum ServerStatus {
     Starting,
-    Running { connection_url: String },
+    Running { port: u16 },
     Error,
-}
-
-// todo: tmp / move this to frontend
-impl Display for ServerStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ServerStatus::Starting => write!(f, "Offline"),
-            ServerStatus::Running { connection_url, .. } => {
-                write!(f, "Running (URL: {})", connection_url)
-            }
-            ServerStatus::Error => write!(f, "Error"),
-        }
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

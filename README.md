@@ -14,6 +14,8 @@ Filen Relay provides a convenient way to serve your Filen Drive via WebDAV/HTTP/
 docker run -e FILEN_RELAY_ADMIN_EMAIL='your-filen-account@email.com' -p 80:80 ghcr.io/jupiterpi/filen-relay:main
 ```
 
+**Important:** By default, any Filen user is allowed to log into your Filen Relay and create servers. Open "Manage Allowed Users" with your admin account to change this setting.
+
 ## Development
 
 This project uses [Dioxus](https://dioxuslabs.com/). Install it, then:

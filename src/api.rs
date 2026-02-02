@@ -4,6 +4,8 @@ use crate::common::{LogLine, ServerState, ServerType};
 #[cfg(feature = "server")]
 use crate::servers::SERVER_MANAGER;
 use anyhow::Context;
+#[cfg(feature = "server")]
+use dioxus::server::axum;
 use dioxus::{
     fullstack::{response::Response, JsonEncoding, Streaming},
     prelude::*,
@@ -112,13 +114,78 @@ mod session {
 pub(crate) fn serve(admin_email: String) {
     ADMIN_EMAIL.set(admin_email).unwrap();
     dioxus::serve(|| async move {
+        use axum_reverse_proxy::ProxyRouterExt;
+
         SERVER_MANAGER.init(crate::servers::ServerManager::new_api);
 
-        Ok(dioxus::server::router(crate::frontend::App).layer(
-            dioxus_server::axum::middleware::from_fn(session::extract_session_token),
-        ))
+        Ok(dioxus::server::router(crate::frontend::App)
+            .layer(dioxus_server::axum::middleware::from_fn(
+                session::extract_session_token,
+            ))
+            .proxy_route(
+                "/s/{id}",
+                ServerResolver {
+                    with_rest: false,
+                    append_slash: false,
+                },
+            )
+            .proxy_route(
+                "/s/{id}/",
+                ServerResolver {
+                    with_rest: false,
+                    append_slash: true,
+                },
+            )
+            .proxy_route(
+                "/s/{id}/{*rest}",
+                ServerResolver {
+                    with_rest: true,
+                    append_slash: false,
+                },
+            ))
     });
 }
+
+#[cfg(feature = "server")]
+#[derive(Clone)]
+struct ServerResolver {
+    with_rest: bool,
+    append_slash: bool,
+}
+
+#[cfg(feature = "server")]
+impl axum_reverse_proxy::TargetResolver for ServerResolver {
+    fn resolve(
+        &self,
+        req: &axum::http::Request<axum::body::Body>,
+        params: &[(String, String)],
+    ) -> String {
+        dioxus::logger::tracing::info!("Resolving server for request: {:?}", req.uri());
+        let id = params[0].1.as_str();
+        if id.len() < 4 {
+            dioxus::logger::tracing::error!("Invalid server id: {}", id);
+            return "/error".to_string(); // todo
+        }
+        let rest = if self.with_rest {
+            "/".to_string() + params.get(1).map(|(_, v)| v.as_str()).unwrap_or("")
+        } else {
+            "".to_string()
+        };
+        let server_states = SERVER_MANAGER.get_server_states().borrow().clone();
+        let Some(server_state) = server_states.iter().find(|s| s.spec.id.starts_with(id)) else {
+            dioxus::logger::tracing::error!("Server not found for id: {}", id);
+            return "/error".to_string(); // todo
+        };
+        let crate::common::ServerStatus::Running { port, .. } = server_state.status else {
+            dioxus::logger::tracing::error!("Server not running for id: {}", id);
+            return "/offline".to_string(); // todo
+        };
+        let extra_slash = if self.append_slash { "/" } else { "" };
+        dioxus::logger::tracing::info!("http://127.0.0.1:{}{}{}", port, rest, extra_slash); // todo tmp
+        format!("http://127.0.0.1:{}{}{}", port, rest, extra_slash)
+    }
+}
+// todo: generally clean this up ^
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct User {

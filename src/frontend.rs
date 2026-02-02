@@ -227,9 +227,17 @@ fn Servers() -> Element {
                                 ServerStatus::Starting => rsx! {
                                     p { class: "text-gray-500", "Status: Starting..." }
                                 },
-                                ServerStatus::Running { connection_url } => rsx! {
+                                ServerStatus::Running { .. } => rsx! {
                                     p { class: "text-green-500", "Online" }
-                                    a { href: "{connection_url}", target: "_blank", "{connection_url}" }
+                                    p {
+                                        "Connect: "
+                                        a {
+                                            class: "font-mono text-blue-400",
+                                            href: "/s/{server_id_short}/",
+                                            target: "_blank",
+                                            "/s/{server_id_short}/"
+                                        }
+                                    }
                                 },
                                 ServerStatus::Error => rsx! {
                                     p { class: "text-red-500", "Status: Error" }

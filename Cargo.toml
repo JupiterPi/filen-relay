@@ -21,6 +21,9 @@ tokio = { version = "1.49.0", features = ["macros"], optional = true }
 port_check = "0.3.0"
 chrono = { version = "0.4.43", features = ["serde"] }
 clap = { version = "4.5.56", features = ["derive", "env"] }
+axum-reverse-proxy = { version = "1.1.1", features = [
+    "native-tls",
+], optional = true }
 
 [features]
 default = ["web", "server"]
@@ -32,4 +35,5 @@ server = [
     "filen-rclone-wrapper",
     "filen-types",
     "tokio",
+    "axum-reverse-proxy",
 ]
