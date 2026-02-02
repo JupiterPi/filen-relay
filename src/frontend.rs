@@ -6,7 +6,7 @@ use dioxus::{
 };
 use strum::IntoEnumIterator as _;
 
-use crate::common::{ServerState, ServerType};
+use crate::common::{ServerState, ServerStatus, ServerType};
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
@@ -16,6 +16,8 @@ enum Route {
     Home {},
     #[route("/login")]
     Login {},
+    #[route("/logs/:logs_id")]
+    Logs { logs_id: String },
 }
 
 struct Authentication {
@@ -203,38 +205,63 @@ fn Servers() -> Element {
     let servers = &*servers;
 
     match servers() {
-        Some(servers) => rsx! {
-            if !servers.is_empty() {
-                div {
-                    class: "flex flex-wrap gap-4",
-                    for server in servers.clone() {
-                        div {
-                            class: "border p-4 inline-flex flex-col w-64 rounded-lg",
-                            h2 { class: "font-bold text-lg", "{server.spec.name}" }
-                            p { class: "font-mono", "#{server.spec.id}" }
-                            p { "Type: {server.spec.server_type}" }
-                            p { "Status: {server.status}" }
-                            button {
-                                class: "_button mt-2",
-                                onclick: move |_| async move {
-                                    match crate::api::remove_server(server.spec.id).await {
-                                        Ok(_) => {
-                                            tracing::info!("Server removed successfully");
-                                        },
-                                        Err(err) => {
-                                            tracing::error!("Failed to remove server: {}", err);
-                                        },
-                                    };
-                                },
-                                "Remove Server"
+        Some(servers) => {
+            let servers = servers
+                .into_iter()
+                .map(|server| {
+                    (
+                        match server.status {
+                            ServerStatus::Running { ref logs_id, .. } => Some(logs_id.clone()),
+                            ServerStatus::Error { ref logs_id } => logs_id.clone(),
+                            _ => None,
+                        },
+                        server,
+                    )
+                })
+                .collect::<Vec<_>>();
+            rsx! {
+                if !servers.is_empty() {
+                    div {
+                        class: "flex flex-wrap gap-4",
+                        for (logs_id, server) in servers.clone() {
+                            div {
+                                class: "border p-4 inline-flex flex-col w-64 rounded-lg",
+                                h2 { class: "font-bold text-lg", "{server.spec.name}" }
+                                p { class: "font-mono", "#{server.spec.id}" }
+                                p { "Type: {server.spec.server_type}" }
+                                p { "Status: {server.status}" }
+                                if let Some(logs_id) = logs_id {
+                                    Link {
+                                        to: Route::Logs { logs_id: logs_id.clone() },
+                                        class: "flex _button mt-2",
+                                        "View Logs"
+                                    }
+                                }
+                                button {
+                                    class: "_button mt-2",
+                                    onclick: move |_| {
+                                        let server = server.clone();
+                                        async move {
+                                            match crate::api::remove_server(server.spec.id.clone()).await {
+                                                Ok(_) => {
+                                                    tracing::info!("Server removed successfully");
+                                                },
+                                                Err(err) => {
+                                                    tracing::error!("Failed to remove server: {}", err);
+                                                },
+                                            };
+                                        }
+                                    },
+                                    "Remove Server"
+                                }
                             }
                         }
                     }
+                } else {
+                    div { class: "text-gray-500", "No servers available." }
                 }
-            } else {
-                div { class: "text-gray-500", "No servers available." }
             }
-        },
+        }
         None => rsx! {
             div { class: "text-gray-500", "Loading servers..." }
         },
@@ -301,6 +328,44 @@ fn CreateServerForm() -> Element {
                 r#type: "submit",
                 disabled: name.read().is_empty(),
                 "Create Server"
+            }
+        }
+    }
+}
+
+#[component]
+fn Logs(logs_id: String) -> Element {
+    let mut logs = use_signal(Vec::<String>::new);
+    use_future(move || {
+        let logs_id = logs_id.clone();
+        async move {
+            match crate::api::get_logs(logs_id.clone()).await {
+                Ok(mut logs_stream) => loop {
+                    match logs_stream.next().await {
+                        Some(Ok(new_log)) => {
+                            logs.write().push(new_log);
+                        }
+                        Some(Err(err)) => {
+                            tracing::error!("Error receiving logs: {}", err);
+                            break;
+                        }
+                        None => {
+                            tracing::info!("Logs stream ended");
+                            break;
+                        }
+                    }
+                },
+                Err(err) => {
+                    tracing::error!("Failed to fetch logs: {}", err);
+                }
+            }
+        }
+    });
+    rsx! {
+        div {
+            class: "flex flex-col gap-2 border p-4 rounded-lg overflow-y-auto font-mono bg-black text-gray-200",
+            for log in logs.read().iter() {
+                div { "{log}" }
             }
         }
     }

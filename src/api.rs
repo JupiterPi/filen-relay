@@ -1,11 +1,13 @@
 use crate::common::{ServerState, ServerType};
 #[cfg(feature = "server")]
 use crate::servers::SERVER_MANAGER;
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use dioxus::{
     fullstack::{response::Response, JsonEncoding, Streaming},
     prelude::*,
 };
+#[cfg(feature = "server")]
+use filen_sdk_rs::auth::Client;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "server")]
@@ -30,6 +32,7 @@ mod session {
         pub token: String,
         pub filen_email: String,
         pub filen_password: String,
+        pub filen_2fa_code: Option<String>,
     }
 
     pub(crate) async fn extract_session_token(
@@ -86,12 +89,14 @@ mod session {
     pub(crate) fn create_session(
         filen_email: &str,
         filen_password: &str,
+        filen_2fa_code: Option<String>,
     ) -> Result<String, anyhow::Error> {
         let token = uuid::Uuid::new_v4().to_string();
         SESSIONS.lock().unwrap().push(Session {
             token: token.clone(),
             filen_email: filen_email.to_string(),
             filen_password: filen_password.to_string(),
+            filen_2fa_code,
         });
         Ok(token)
     }
@@ -100,7 +105,7 @@ mod session {
 #[cfg(feature = "server")]
 pub(crate) fn serve() {
     dioxus::serve(|| async move {
-        SERVER_MANAGER.init(crate::servers::ServerManager::new);
+        SERVER_MANAGER.init(crate::servers::ServerManager::new_api);
 
         Ok(dioxus::server::router(crate::frontend::App).layer(
             dioxus_server::axum::middleware::from_fn(session::extract_session_token),
@@ -120,18 +125,17 @@ pub(crate) async fn get_user() -> Result<User> {
     })
 }
 
-#[post("/api/login")]
-pub(crate) async fn login(
+#[cfg(feature = "server")]
+pub(crate) async fn authenticate_filen_client(
     email: String,
-    password: String,
+    password: &str,
     two_factor_code: Option<String>,
-) -> Result<Response, anyhow::Error> {
-    use filen_sdk_rs::{auth::Client, ErrorKind};
+) -> Result<Client, anyhow::Error> {
+    use filen_sdk_rs::ErrorKind;
     use filen_types::error::ResponseError;
-
     match Client::login(
         email.clone(),
-        &password,
+        password,
         two_factor_code.as_deref().unwrap_or("XXXXXX"),
     )
     .await
@@ -149,9 +153,21 @@ pub(crate) async fn login(
                     ))
                 }
             }
-            Err(e) => Err(anyhow!(e)).context("Failed to log in"),
+            Err(e) => Err(anyhow::anyhow!(e)).context("Failed to log in"),
         },
-        Err(e) => Err(anyhow!(e)).context("Failed to log in"),
+        Err(e) => Err(anyhow::anyhow!(e)).context("Failed to log in"),
+        Ok(client) => Ok(client),
+    }
+}
+
+#[post("/api/login")]
+pub(crate) async fn login(
+    email: String,
+    password: String,
+    two_factor_code: Option<String>,
+) -> Result<Response, anyhow::Error> {
+    match authenticate_filen_client(email.clone(), &password, two_factor_code.clone()).await {
+        Err(e) => Err(anyhow::anyhow!(e)).context("Failed to log in"),
         Ok(_client) => {
             let allowed_users = crate::db::get_allowed_users()
                 .map_err(|e| anyhow::anyhow!("Failed to get allowed users from database: {}", e))?;
@@ -163,7 +179,7 @@ pub(crate) async fn login(
             if is_allowed {
                 use dioxus::fullstack::{body::Body, response::Response};
 
-                let token = session::create_session(&email, &password)?;
+                let token = session::create_session(&email, &password, two_factor_code.clone())?;
                 Ok(Response::builder()
                     .header("Set-Cookie", format!("Session={}; HttpOnly; Path=/", token))
                     .body(Body::empty())
@@ -211,6 +227,33 @@ pub(crate) async fn get_servers() -> Result<Streaming<Vec<ServerState>, JsonEnco
     }))
 }
 
+#[get("/api/logs/{logs_id}", session: session::Session)]
+pub(crate) async fn get_logs(logs_id: String) -> Result<Streaming<String, JsonEncoding>> {
+    let Some(logs) = SERVER_MANAGER.get_logs(&logs_id) else {
+        return Err(anyhow::anyhow!("Logs not found"))?;
+    };
+    if logs.server_spec.filen_email != session.filen_email {
+        return Err(anyhow::anyhow!("Unauthorized to access logs"))?;
+    }
+    Ok(Streaming::spawn(|tx| async move {
+        let (history, mut rx) = {
+            let logs = logs.logs.lock().unwrap();
+            let (history, rx) = logs.get();
+            (history.clone(), rx.resubscribe())
+        };
+        for line in history {
+            if tx.unbounded_send(line.clone()).is_err() {
+                return;
+            }
+        }
+        while let Ok(line) = rx.recv().await {
+            if tx.unbounded_send(line).is_err() {
+                return;
+            }
+        }
+    }))
+}
+
 #[post("/api/servers/add", session: session::Session)]
 pub(crate) async fn add_server(name: String, server_type: ServerType) -> Result<(), anyhow::Error> {
     SERVER_MANAGER
@@ -219,12 +262,13 @@ pub(crate) async fn add_server(name: String, server_type: ServerType) -> Result<
             server_type,
             filen_email: session.filen_email,
             filen_password: session.filen_password,
+            filen_2fa_code: session.filen_2fa_code,
         })
         .await
 }
 
 #[post("/api/servers/remove", session: session::Session)]
-pub(crate) async fn remove_server(id: i32) -> Result<(), anyhow::Error> {
+pub(crate) async fn remove_server(id: String) -> Result<(), anyhow::Error> {
     SERVER_MANAGER
         .get_server_states()
         .borrow()

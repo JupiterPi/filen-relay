@@ -1,15 +1,16 @@
 use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
-use strum_macros::{Display, EnumIter};
+use strum_macros::EnumIter;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct ServerSpec {
-    pub id: i32,
+    pub id: String,
     pub name: String,
     pub server_type: ServerType,
     pub filen_email: String,
     pub filen_password: String,
+    pub filen_2fa_code: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize, EnumIter)]
@@ -43,9 +44,38 @@ pub(crate) struct ServerState {
     pub status: ServerStatus,
 }
 
-#[derive(Clone, Serialize, Deserialize, Display)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) enum ServerStatus {
-    Running,
-    Stopped,
-    Error,
+    Starting,
+    Running {
+        connection_url: String,
+        logs_id: String,
+    },
+    Error {
+        logs_id: Option<String>,
+    },
+}
+
+impl ServerStatus {
+    pub(crate) fn error(&self) -> Self {
+        match self {
+            ServerStatus::Running { logs_id, .. } => ServerStatus::Error {
+                logs_id: Some(logs_id.clone()),
+            },
+            _ => ServerStatus::Error { logs_id: None },
+        }
+    }
+}
+
+// todo: tmp / move this to frontend
+impl Display for ServerStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerStatus::Starting => write!(f, "Offline"),
+            ServerStatus::Running { connection_url, .. } => {
+                write!(f, "Running (URL: {})", connection_url)
+            }
+            ServerStatus::Error { .. } => write!(f, "Error"),
+        }
+    }
 }

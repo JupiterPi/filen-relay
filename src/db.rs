@@ -11,11 +11,12 @@ thread_local! {
                 email TEXT NOT NULL UNIQUE
             );
             CREATE TABLE IF NOT EXISTS servers (
-                id INTEGER PRIMARY KEY,
+                id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 server_type TEXT NOT NULL,
                 filen_email TEXT NOT NULL,
-                filen_password TEXT NOT NULL
+                filen_password TEXT NOT NULL,
+                filen_2fa_code TEXT
             );
             ",
         ).unwrap();
@@ -66,7 +67,7 @@ pub(crate) fn clear_allowed_users() -> Result<()> {
 pub(crate) fn get_servers() -> Result<Vec<ServerSpec>> {
     DB.with(|db| {
         let mut stmt =
-            db.prepare("SELECT id, name, server_type, filen_email, filen_password FROM servers")?;
+            db.prepare("SELECT id, name, server_type, filen_email, filen_password, filen_2fa_code FROM servers")?;
         let server_iter = stmt.query_map([], |row| {
             Ok(ServerSpec {
                 id: row.get(0)?,
@@ -74,6 +75,7 @@ pub(crate) fn get_servers() -> Result<Vec<ServerSpec>> {
                 server_type: row.get::<_, String>(2)?.as_str().into(),
                 filen_email: row.get(3)?,
                 filen_password: row.get(4)?,
+                filen_2fa_code: row.get(5)?,
             })
         })?;
 
@@ -90,23 +92,26 @@ pub(crate) fn create_server(
     server_type: ServerType,
     filen_email: &str,
     filen_password: &str,
+    filen_2fa_code: Option<&str>,
 ) -> Result<ServerSpec> {
     DB.with(|db| {
-            db.execute(
-                "INSERT INTO servers (name, server_type, filen_email, filen_password) VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![name, server_type.to_string(), filen_email, filen_password],
-            )?;
-            Ok(ServerSpec {
-                id: db.last_insert_rowid() as i32,
-                name: name.to_string(),
-                server_type,
-                filen_email: filen_email.to_string(),
-                filen_password: filen_password.to_string(),
-            })
+        let id = uuid::Uuid::new_v4().to_string();
+        db.execute(
+            "INSERT INTO servers (id, name, server_type, filen_email, filen_password, filen_2fa_code) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![id, name, server_type.to_string(), filen_email, filen_password, filen_2fa_code],
+        )?;
+        Ok(ServerSpec {
+            id,
+            name: name.to_string(),
+            server_type,
+            filen_email: filen_email.to_string(),
+            filen_password: filen_password.to_string(),
+            filen_2fa_code: filen_2fa_code.map(|code| code.to_string()),
         })
+    })
 }
 
-pub(crate) fn delete_server(id: i32) -> Result<()> {
+pub(crate) fn delete_server(id: &str) -> Result<()> {
     DB.with(|db| {
         db.execute("DELETE FROM servers WHERE id = ?1", rusqlite::params![id])?;
         Ok(())

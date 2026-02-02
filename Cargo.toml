@@ -11,14 +11,23 @@ anyhow = "1.0.100"
 dioxus = { version = "0.7.1", features = ["router", "fullstack"] }
 rusqlite = { version = "0.38.0", features = ["bundled"], optional = true }
 serde = { version = "1.0.228", features = ["derive"] }
-filen-sdk-rs = { git = "https://github.com/FilenCloudDienste/filen-rs", optional = true }
-filen-types = { git = "https://github.com/FilenCloudDienste/filen-rs", optional = true }
+filen-sdk-rs = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c", optional = true }
+filen-rclone-wrapper = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c", optional = true }
+filen-types = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c", optional = true }
 uuid = "1.20.0"
 strum = "0.27.2"
 strum_macros = "0.27.2"
 tokio = { version = "1.49.0", features = ["macros"], optional = true }
+port_check = "0.3.0"
 
 [features]
 default = ["web", "server"]
 web = ["dioxus/web"]
-server = ["dioxus/server", "rusqlite", "filen-sdk-rs", "filen-types", "tokio"]
+server = [
+    "dioxus/server",
+    "rusqlite",
+    "filen-sdk-rs",
+    "filen-rclone-wrapper",
+    "filen-types",
+    "tokio",
+]
