@@ -22,6 +22,7 @@ COPY . .
 RUN dx bundle --web --release
 
 FROM debian:trixie-slim AS runtime
+RUN apt-get update && apt-get install -y ca-certificates
 ENV PORT=80
 ENV IP=0.0.0.0
 EXPOSE 80
