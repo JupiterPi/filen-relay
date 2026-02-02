@@ -41,30 +41,15 @@ impl From<&str> for ServerType {
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct ServerState {
     pub spec: ServerSpec,
+    pub logs_id: String,
     pub status: ServerStatus,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) enum ServerStatus {
     Starting,
-    Running {
-        connection_url: String,
-        logs_id: String,
-    },
-    Error {
-        logs_id: Option<String>,
-    },
-}
-
-impl ServerStatus {
-    pub(crate) fn error(&self) -> Self {
-        match self {
-            ServerStatus::Running { logs_id, .. } => ServerStatus::Error {
-                logs_id: Some(logs_id.clone()),
-            },
-            _ => ServerStatus::Error { logs_id: None },
-        }
-    }
+    Running { connection_url: String },
+    Error,
 }
 
 // todo: tmp / move this to frontend
@@ -75,7 +60,7 @@ impl Display for ServerStatus {
             ServerStatus::Running { connection_url, .. } => {
                 write!(f, "Running (URL: {})", connection_url)
             }
-            ServerStatus::Error { .. } => write!(f, "Error"),
+            ServerStatus::Error => write!(f, "Error"),
         }
     }
 }

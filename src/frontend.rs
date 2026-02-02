@@ -50,30 +50,16 @@ pub(crate) fn App() -> Element {
 #[component]
 fn Navbar() -> Element {
     rsx! {
-        div {
-            id: "navbar",
-            class: "flex gap-4 border-b-1 border-gray-400 p-4",
-            Link {
-                to: Route::Home {},
-                class: "font-bold",
-                "Filen Relay"
-            }
-            div {
-                class: "flex-1",
-            }
+        div { id: "navbar", class: "flex gap-4 border-b-1 border-gray-400 p-4",
+            Link { to: Route::Home {}, class: "font-bold", "Filen Relay" }
+            div { class: "flex-1" }
             if let Some(auth) = AUTH.read().deref() {
                 span { "{auth.email}" }
             } else {
-                Link {
-                    to: Route::Login {},
-                    "Login"
-                }
+                Link { to: Route::Login {}, "Login" }
             }
         }
-        div {
-            class: "p-4",
-            Outlet::<Route> {}
-        }
+        div { class: "p-4", Outlet::<Route> {} }
     }
 }
 
@@ -81,20 +67,13 @@ fn Navbar() -> Element {
 fn Home() -> Element {
     rsx! {
         if let Some(auth) = AUTH.read().deref() {
-            div {
-                class: "flex flex-col gap-4",
-                div {
-                    class: "italic",
-                    "Welcome to Filen Relay, {auth.email}!"
-                }
+            div { class: "flex flex-col gap-4",
+                div { class: "italic", "Welcome to Filen Relay, {auth.email}!" }
                 Servers {}
                 CreateServerForm {}
             }
         } else {
-            div {
-                class: "italic",
-                "Welcome to Filen Relay! Please log in to continue."
-            }
+            div { class: "italic", "Welcome to Filen Relay! Please log in to continue." }
         }
     }
 }
@@ -108,14 +87,19 @@ fn Login() -> Element {
     let mut loading = use_signal(|| false);
 
     rsx! {
-        div {
-            class: "w-full flex justify-center",
+        div { class: "w-full flex justify-center",
             form {
                 class: "flex flex-col gap-2",
                 onsubmit: move |e| async move {
                     e.prevent_default();
                     loading.set(true);
-                    match crate::api::login(email.cloned(), password.cloned(), two_factor_code.cloned()).await {
+                    match crate::api::login(
+                            email.cloned(),
+                            password.cloned(),
+                            two_factor_code.cloned(),
+                        )
+                        .await
+                    {
                         Ok(_response) => {
                             tracing::info!("Logged in successfully");
                             *AUTH.write() = Some(Authentication {
@@ -205,61 +189,61 @@ fn Servers() -> Element {
     let servers = &*servers;
 
     match servers() {
-        Some(servers) => {
-            let servers = servers
-                .into_iter()
-                .map(|server| {
-                    (
-                        match server.status {
-                            ServerStatus::Running { ref logs_id, .. } => Some(logs_id.clone()),
-                            ServerStatus::Error { ref logs_id } => logs_id.clone(),
-                            _ => None,
-                        },
-                        server,
-                    )
-                })
-                .collect::<Vec<_>>();
+        Some(servers) if !servers.is_empty() => {
             rsx! {
-                if !servers.is_empty() {
-                    div {
-                        class: "flex flex-wrap gap-4",
-                        for (logs_id, server) in servers.clone() {
-                            div {
-                                class: "border p-4 inline-flex flex-col w-64 rounded-lg",
-                                h2 { class: "font-bold text-lg", "{server.spec.name}" }
-                                p { class: "font-mono", "#{server.spec.id}" }
-                                p { "Type: {server.spec.server_type}" }
-                                p { "Status: {server.status}" }
-                                if let Some(logs_id) = logs_id {
-                                    Link {
-                                        to: Route::Logs { logs_id: logs_id.clone() },
-                                        class: "flex _button mt-2",
-                                        "View Logs"
+                div { class: "flex flex-wrap gap-4",
+                    for (server , server_id_short) in servers.iter().map(|s| (s.clone(), s.spec.id.split_once('-').unwrap().0)) {
+                        div { class: "border p-4 inline-flex flex-col w-64 rounded-lg",
+                            h2 { class: "font-bold text-lg", "{server.spec.name}" }
+                            p {
+                                "ID: "
+                                span { class: "font-mono", "#{server_id_short}" }
+                            }
+                            p { "Type: {server.spec.server_type}" }
+                            match server.status.clone() {
+                                ServerStatus::Starting => rsx! {
+                                    p { class: "text-gray-500", "Status: Starting..." }
+                                },
+                                ServerStatus::Running { connection_url } => rsx! {
+                                    p { class: "text-green-500", "Online" }
+                                    a { href: "{connection_url}", target: "_blank", "{connection_url}" }
+                                },
+                                ServerStatus::Error => rsx! {
+                                    p { class: "text-red-500", "Status: Error" }
+                                },
+                            }
+                            Link {
+                                to: Route::Logs {
+                                    logs_id: server.logs_id.clone(),
+                                },
+                                class: "flex _button mt-2",
+                                "View Logs"
+                            }
+                            button {
+                                class: "_button mt-2",
+                                onclick: move |_| {
+                                    let server = server.clone();
+                                    async move {
+                                        match crate::api::remove_server(server.spec.id.clone()).await {
+                                            Ok(_) => {
+                                                tracing::info!("Server removed successfully");
+                                            }
+                                            Err(err) => {
+                                                tracing::error!("Failed to remove server: {}", err);
+                                            }
+                                        };
                                     }
-                                }
-                                button {
-                                    class: "_button mt-2",
-                                    onclick: move |_| {
-                                        let server = server.clone();
-                                        async move {
-                                            match crate::api::remove_server(server.spec.id.clone()).await {
-                                                Ok(_) => {
-                                                    tracing::info!("Server removed successfully");
-                                                },
-                                                Err(err) => {
-                                                    tracing::error!("Failed to remove server: {}", err);
-                                                },
-                                            };
-                                        }
-                                    },
-                                    "Remove Server"
-                                }
+                                },
+                                "Remove Server"
                             }
                         }
                     }
-                } else {
-                    div { class: "text-gray-500", "No servers available." }
                 }
+            }
+        }
+        Some(_) => {
+            rsx! {
+                div { class: "text-gray-500", "No servers available." }
             }
         }
         None => rsx! {
@@ -289,14 +273,13 @@ fn CreateServerForm() -> Element {
                         tracing::info!("Server created successfully");
                         name.set("".to_string());
                         server_type.set(ServerType::Http);
-                    },
+                    }
                     Err(err) => {
                         tracing::error!("Failed to create server: {}", err);
-                    },
+                    }
                 };
             },
-            div {
-                class: "flex items-stretch gap-2",
+            div { class: "flex items-stretch gap-2",
                 div {
                     label { "Server Name:" }
                     input {
@@ -315,10 +298,7 @@ fn CreateServerForm() -> Element {
                             server_type.set(ServerType::from(e.value().as_str()));
                         },
                         for server_type in ServerType::iter() {
-                            option {
-                                value: server_type.to_string(),
-                                "{server_type.to_string()}"
-                            }
+                            option { value: server_type.to_string(), "{server_type.to_string()}" }
                         }
                     }
                 }
@@ -362,8 +342,7 @@ fn Logs(logs_id: String) -> Element {
         }
     });
     rsx! {
-        div {
-            class: "flex flex-col gap-2 border p-4 rounded-lg overflow-y-auto font-mono bg-black text-gray-200",
+        div { class: "flex flex-col gap-2 border p-4 rounded-lg overflow-y-auto font-mono bg-black text-gray-200",
             for log in logs.read().iter() {
                 div { "{log}" }
             }

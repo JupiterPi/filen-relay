@@ -79,6 +79,7 @@ impl ServerManager {
     }
 
     async fn run(mut self, updates_rx: &mut tokio::sync::mpsc::Receiver<ServerSpecUpdate>) {
+        // load existing servers from the database and start them
         let servers = match crate::db::get_servers() {
             Ok(servers) => servers,
             Err(e) => {
@@ -93,6 +94,8 @@ impl ServerManager {
         }
 
         loop {
+            // listen for updates
+            // on update, persist changes to the database and start/stop servers accordingly
             if let Some(update) = updates_rx.recv().await {
                 match update {
                     ServerSpecUpdate::Add {
@@ -155,6 +158,17 @@ impl ServerManager {
     }
 
     async fn start_server(&mut self, spec: &ServerSpec) -> Result<()> {
+        // set "pending" state
+        let logs_id = format!("logs_{}", uuid::Uuid::new_v4());
+        self.server_states_tx.send_modify(|server_states| {
+            server_states.push(ServerState {
+                spec: spec.clone(),
+                status: ServerStatus::Starting,
+                logs_id: logs_id.clone(),
+            });
+        });
+
+        // start server process
         let client = authenticate_filen_client(
             spec.filen_email.clone(),
             &spec.filen_password,
@@ -190,22 +204,16 @@ impl ServerManager {
         .await
         .context("Failed to start rclone server")?;
 
-        let logs_id = format!("logs_{}", uuid::Uuid::new_v4());
-
+        // set "running" state
         self.server_states_tx.send_modify(|server_states| {
-            server_states.push(ServerState {
-                spec: spec.clone(),
-                status: ServerStatus::Running {
-                    connection_url: server.address.clone(),
-                    logs_id: logs_id.clone(),
-                },
-            });
+            if let Some(s) = server_states.iter_mut().find(|s| s.spec.id == spec.id) {
+                s.status = ServerStatus::Running {
+                    connection_url: format!("http://127.0.0.1:{}", port),
+                };
+            }
         });
 
         let spec = spec.clone();
-
-        let (stop_server_tx, stop_server_rx) = oneshot::channel::<()>();
-        self.stop_handles.insert(spec.id.clone(), stop_server_tx);
 
         // handle logs
         let logs = Logs {
@@ -235,10 +243,13 @@ impl ServerManager {
             });
         }
 
+        let (stop_server_tx, stop_server_rx) = oneshot::channel::<()>();
+        self.stop_handles.insert(spec.id.clone(), stop_server_tx);
         let server_states_tx = self.server_states_tx.clone();
         tokio::spawn(async move {
             select! {
                 _ = stop_server_rx => {
+                    // handle stopping the server
                     tracing::info!("Stopping server {}", spec.name);
                     if let Err(e) = server.process.kill().await {
                         tracing::error!("Failed to stop server {}: {}", spec.name, e);
@@ -250,6 +261,7 @@ impl ServerManager {
                     });
                 }
                 status = server.process.wait() => {
+                    // handle process exit
                     match status {
                         Ok(status) => {
                             tracing::info!("Server {} exited with status: {}", spec.name, status);
@@ -261,7 +273,7 @@ impl ServerManager {
                                 server_states_tx.send_modify(|server_states| {
                                     if let Some(s) = server_states.iter_mut().find(|s| s.spec.id == spec.id)
                                     {
-                                        s.status = s.status.error();
+                                        s.status = ServerStatus::Error;
                                     }
                                 });
                             }
@@ -270,7 +282,7 @@ impl ServerManager {
                             tracing::error!("Server {} process wait failed: {}", spec.name, e);
                             server_states_tx.send_modify(|server_states| {
                                 if let Some(s) = server_states.iter_mut().find(|s| s.spec.id == spec.id) {
-                                    s.status = s.status.error();
+                                    s.status = ServerStatus::Error;
                                 }
                             });
                         }
@@ -283,17 +295,12 @@ impl ServerManager {
     }
 
     async fn stop_server(&mut self, spec: &ServerSpec) -> Result<()> {
-        // stop process
-        self.stop_handles
+        // send stop process
+        let _ = self
+            .stop_handles
             .remove(&spec.id)
             .ok_or_else(|| anyhow::anyhow!("No running server found with id: {} to stop", spec.id))?
-            .send(())
-            .map_err(|_| {
-                anyhow::anyhow!("Failed to send stop signal to server with id: {}", spec.id)
-            })?;
-        self.server_states_tx.send_modify(|server_states| {
-            server_states.retain(|s| s.spec.id != spec.id);
-        });
+            .send(()); // ignore failure, means the server is already stopped
         Ok(())
     }
     // todo: at some point also delete the directory?
