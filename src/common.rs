@@ -64,3 +64,15 @@ impl Display for ServerStatus {
         }
     }
 }
+
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct LogLine {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub content: LogLineContent,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) enum LogLineContent {
+    Event(String),
+    ServerProcess(String),
+}

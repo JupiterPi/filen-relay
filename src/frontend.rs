@@ -1,12 +1,13 @@
 use std::ops::Deref;
 
+use chrono::Local;
 use dioxus::{
     logger::tracing::{self},
     prelude::*,
 };
 use strum::IntoEnumIterator as _;
 
-use crate::common::{ServerState, ServerStatus, ServerType};
+use crate::common::{LogLine, LogLineContent, ServerState, ServerStatus, ServerType};
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
@@ -315,7 +316,7 @@ fn CreateServerForm() -> Element {
 
 #[component]
 fn Logs(logs_id: String) -> Element {
-    let mut logs = use_signal(Vec::<String>::new);
+    let mut logs = use_signal(Vec::<LogLine>::new);
     use_future(move || {
         let logs_id = logs_id.clone();
         async move {
@@ -342,9 +343,25 @@ fn Logs(logs_id: String) -> Element {
         }
     });
     rsx! {
-        div { class: "flex flex-col gap-2 border p-4 rounded-lg overflow-y-auto font-mono bg-black text-gray-200",
-            for log in logs.read().iter() {
-                div { "{log}" }
+        div { class: "flex flex-col gap-1 p-2 rounded-lg overflow-y-auto font-mono text-gray-200",
+            for (log , timestamp) in logs.read()
+                .iter()
+                .map(|log| (
+                    log,
+                    log.clone().timestamp.with_timezone(&Local).format("%Y-%m-%d %H:%M:%S"),
+                ))
+            {
+                div {
+                    span { class: "text-gray-500 mr-2", "[{timestamp}] " }
+                    match &log.content {
+                        LogLineContent::ServerProcess(content) => rsx! {
+                            span { "{content}" }
+                        },
+                        LogLineContent::Event(content) => rsx! {
+                            span { class: "text-blue-400", "{content}" }
+                        },
+                    }
+                }
             }
         }
     }

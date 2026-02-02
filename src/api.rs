@@ -1,4 +1,4 @@
-use crate::common::{ServerState, ServerType};
+use crate::common::{LogLine, ServerState, ServerType};
 #[cfg(feature = "server")]
 use crate::servers::SERVER_MANAGER;
 use anyhow::Context;
@@ -228,7 +228,7 @@ pub(crate) async fn get_servers() -> Result<Streaming<Vec<ServerState>, JsonEnco
 }
 
 #[get("/api/logs/{logs_id}", session: session::Session)]
-pub(crate) async fn get_logs(logs_id: String) -> Result<Streaming<String, JsonEncoding>> {
+pub(crate) async fn get_logs(logs_id: String) -> Result<Streaming<LogLine, JsonEncoding>> {
     let Some(logs) = SERVER_MANAGER.get_logs(&logs_id) else {
         return Err(anyhow::anyhow!("Logs not found"))?;
     };

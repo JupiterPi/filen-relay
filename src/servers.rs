@@ -13,6 +13,8 @@ use tokio::select;
 use tokio::sync::oneshot;
 
 use crate::api::authenticate_filen_client;
+use crate::common::LogLine;
+use crate::common::LogLineContent;
 use crate::common::ServerSpec;
 use crate::common::ServerState;
 use crate::common::ServerStatus;
@@ -26,7 +28,7 @@ pub(crate) static SERVER_MANAGER: UnwrapOnceLock<ServerManagerApi> =
 #[derive(Clone)]
 pub(crate) struct Logs {
     pub server_spec: ServerSpec,
-    pub logs: Arc<Mutex<IncrementalVec<String>>>,
+    pub logs: Arc<Mutex<IncrementalVec<LogLine>>>,
 }
 
 pub(crate) struct ServerManagerApi {
@@ -158,8 +160,51 @@ impl ServerManager {
     }
 
     async fn start_server(&mut self, spec: &ServerSpec) -> Result<()> {
-        // set "pending" state
+        // setup logs
         let logs_id = format!("logs_{}", uuid::Uuid::new_v4());
+        let logs = {
+            let logs = Logs {
+                server_spec: spec.clone(),
+                logs: Arc::new(Mutex::new(IncrementalVec::<LogLine>::new(100))),
+            };
+            let logs_ = logs.logs.clone();
+            self.logs.lock().unwrap().insert(logs_id.clone(), logs);
+            logs_
+        };
+        let log_info = {
+            let logs = logs.clone();
+            let spec = spec.clone();
+            move |message: &str| {
+                logs.lock().unwrap().push(LogLine {
+                    timestamp: chrono::Utc::now(),
+                    content: LogLineContent::Event(message.to_string()),
+                });
+                tracing::info!("Server {} ({}): {}", spec.name, spec.id, message);
+            }
+        };
+        let log_err = {
+            let logs = logs.clone();
+            let spec = spec.clone();
+            move |message: &str| {
+                logs.lock().unwrap().push(LogLine {
+                    timestamp: chrono::Utc::now(),
+                    content: LogLineContent::Event(message.to_string()),
+                });
+                tracing::info!("Server {} ({}) ERR: {}", spec.name, spec.id, message);
+            }
+        };
+        let log_output = {
+            let logs = logs.clone();
+            move |message: &str| {
+                logs.lock().unwrap().push(LogLine {
+                    timestamp: chrono::Utc::now(),
+                    content: LogLineContent::ServerProcess(message.to_string()),
+                });
+            }
+        };
+
+        // set "pending" state
+        log_info("Starting server...");
         self.server_states_tx.send_modify(|server_states| {
             server_states.push(ServerState {
                 spec: spec.clone(),
@@ -205,6 +250,7 @@ impl ServerManager {
         .context("Failed to start rclone server")?;
 
         // set "running" state
+        log_info("Server started successfully.");
         self.server_states_tx.send_modify(|server_states| {
             if let Some(s) = server_states.iter_mut().find(|s| s.spec.id == spec.id) {
                 s.status = ServerStatus::Running {
@@ -216,29 +262,22 @@ impl ServerManager {
         let spec = spec.clone();
 
         // handle logs
-        let logs = Logs {
-            server_spec: spec.clone(),
-            logs: Arc::new(Mutex::new(IncrementalVec::<String>::new(100))),
-        };
-        let logs_ = logs.logs.clone();
-        self.logs.lock().unwrap().insert(logs_id, logs);
         {
+            let log_output = log_output.clone();
             let process_stdout = server.process.stdout.take().unwrap();
-            let logs_ = logs_.clone();
             tokio::spawn(async move {
                 let mut reader = BufReader::new(process_stdout).lines();
                 while let Ok(Some(line)) = reader.next_line().await {
-                    logs_.lock().unwrap().push(line);
+                    log_output(&line);
                 }
             });
         }
         {
             let process_stderr = server.process.stderr.take().unwrap();
-            let logs_ = logs_.clone();
             tokio::spawn(async move {
                 let mut reader = BufReader::new(process_stderr).lines();
                 while let Ok(Some(line)) = reader.next_line().await {
-                    logs_.lock().unwrap().push(line);
+                    log_output(&line);
                 }
             });
         }
@@ -250,11 +289,10 @@ impl ServerManager {
             select! {
                 _ = stop_server_rx => {
                     // handle stopping the server
-                    tracing::info!("Stopping server {}", spec.name);
                     if let Err(e) = server.process.kill().await {
-                        tracing::error!("Failed to stop server {}: {}", spec.name, e);
+                        log_err(&format!("Failed to stop server: {}", e));
                     } else {
-                        tracing::info!("Server {} stopped", spec.name);
+                        log_info("Server stopped.");
                     }
                     server_states_tx.send_modify(|server_states| {
                         server_states.retain(|s| s.spec.id != spec.id);
@@ -264,7 +302,7 @@ impl ServerManager {
                     // handle process exit
                     match status {
                         Ok(status) => {
-                            tracing::info!("Server {} exited with status: {}", spec.name, status);
+                            log_err(&format!("Server process exited with status: {}", status));
                             if status.success() {
                                 server_states_tx.send_modify(|server_states| {
                                     server_states.retain(|s| s.spec.id != spec.id);
@@ -279,7 +317,7 @@ impl ServerManager {
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Server {} process wait failed: {}", spec.name, e);
+                            log_err(&format!("Server process wait failed: {}", e));
                             server_states_tx.send_modify(|server_states| {
                                 if let Some(s) = server_states.iter_mut().find(|s| s.spec.id == spec.id) {
                                     s.status = ServerStatus::Error;
