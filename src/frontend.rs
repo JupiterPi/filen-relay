@@ -23,6 +23,7 @@ enum Route {
 
 struct Authentication {
     pub email: String,
+    pub is_admin: bool,
 }
 static AUTH: GlobalSignal<Option<Authentication>> = Signal::global(|| None);
 
@@ -32,7 +33,10 @@ pub(crate) fn App() -> Element {
         match crate::api::get_user().await {
             Ok(user) => {
                 tracing::info!("Authenticated as {}", user.email);
-                *AUTH.write() = Some(Authentication { email: user.email });
+                *AUTH.write() = Some(Authentication {
+                    email: user.email,
+                    is_admin: user.is_admin,
+                });
             }
             Err(err) => {
                 tracing::info!("Not authenticated: {}", err);
@@ -69,7 +73,12 @@ fn Home() -> Element {
     rsx! {
         if let Some(auth) = AUTH.read().deref() {
             div { class: "flex flex-col gap-4",
-                div { class: "italic", "Welcome to Filen Relay, {auth.email}!" }
+                div { class: "italic",
+                    "Welcome to Filen Relay, {auth.email}!"
+                    if auth.is_admin {
+                        span { class: "text-red-500 italic", " You have admin privileges." }
+                    }
+                }
                 Servers {}
                 CreateServerForm {}
             }
@@ -103,9 +112,17 @@ fn Login() -> Element {
                     {
                         Ok(_response) => {
                             tracing::info!("Logged in successfully");
-                            *AUTH.write() = Some(Authentication {
-                                email: email.to_string(),
-                            });
+                            match crate::api::get_user().await {
+                                Ok(user) => {
+                                    *AUTH.write() = Some(Authentication {
+                                        email: user.email,
+                                        is_admin: user.is_admin,
+                                    });
+                                }
+                                Err(_) => {
+                                    tracing::error!("Failed to fetch user info after login");
+                                }
+                            }
                             email.set("".to_string());
                             password.set("".to_string());
                             two_factor_code.set(None);

@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use crate::common::{LogLine, ServerState, ServerType};
 #[cfg(feature = "server")]
 use crate::servers::SERVER_MANAGER;
@@ -9,6 +11,8 @@ use dioxus::{
 #[cfg(feature = "server")]
 use filen_sdk_rs::auth::Client;
 use serde::{Deserialize, Serialize};
+
+static ADMIN_EMAIL: OnceLock<String> = OnceLock::new();
 
 #[cfg(feature = "server")]
 mod session {
@@ -33,6 +37,7 @@ mod session {
         pub filen_email: String,
         pub filen_password: String,
         pub filen_2fa_code: Option<String>,
+        pub is_admin: bool,
     }
 
     pub(crate) async fn extract_session_token(
@@ -97,13 +102,15 @@ mod session {
             filen_email: filen_email.to_string(),
             filen_password: filen_password.to_string(),
             filen_2fa_code,
+            is_admin: Some(filen_email.to_string()) == super::ADMIN_EMAIL.get().cloned(),
         });
         Ok(token)
     }
 }
 
 #[cfg(feature = "server")]
-pub(crate) fn serve() {
+pub(crate) fn serve(admin_email: String) {
+    ADMIN_EMAIL.set(admin_email).unwrap();
     dioxus::serve(|| async move {
         SERVER_MANAGER.init(crate::servers::ServerManager::new_api);
 
@@ -116,12 +123,14 @@ pub(crate) fn serve() {
 #[derive(Serialize, Deserialize)]
 pub(crate) struct User {
     pub email: String,
+    pub is_admin: bool,
 }
 
 #[post("/api/user", session: session::Session)]
 pub(crate) async fn get_user() -> Result<User> {
     Ok(User {
         email: session.filen_email,
+        is_admin: session.is_admin,
     })
 }
 
@@ -193,13 +202,13 @@ pub(crate) async fn login(
 
 #[get("/api/servers", session: session::Session)]
 pub(crate) async fn get_servers() -> Result<Streaming<Vec<ServerState>, JsonEncoding>> {
-    Ok(Streaming::spawn(|tx| async move {
+    Ok(Streaming::spawn(move |tx| async move {
         let send_server_states = || {
             let server_states = SERVER_MANAGER
                 .get_server_states()
                 .borrow()
                 .iter()
-                .filter(|s| s.spec.filen_email == session.filen_email)
+                .filter(|s| session.is_admin || s.spec.filen_email == session.filen_email)
                 .cloned()
                 .collect::<Vec<ServerState>>();
             if let Err(e) = tx.unbounded_send(server_states) {
@@ -232,7 +241,7 @@ pub(crate) async fn get_logs(logs_id: String) -> Result<Streaming<LogLine, JsonE
     let Some(logs) = SERVER_MANAGER.get_logs(&logs_id) else {
         return Err(anyhow::anyhow!("Logs not found"))?;
     };
-    if logs.server_spec.filen_email != session.filen_email {
+    if !session.is_admin && logs.server_spec.filen_email != session.filen_email {
         return Err(anyhow::anyhow!("Unauthorized to access logs"))?;
     }
     Ok(Streaming::spawn(|tx| async move {
@@ -273,7 +282,9 @@ pub(crate) async fn remove_server(id: String) -> Result<(), anyhow::Error> {
         .get_server_states()
         .borrow()
         .iter()
-        .find(|s| s.spec.id == id && s.spec.filen_email == session.filen_email)
+        .find(|s| {
+            s.spec.id == id && (session.is_admin || s.spec.filen_email == session.filen_email)
+        })
         .ok_or_else(|| anyhow::anyhow!("Server not found or not owned by user"))?;
     SERVER_MANAGER
         .update_server_spec(crate::servers::ServerSpecUpdate::Remove(id))
