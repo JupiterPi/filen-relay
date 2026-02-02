@@ -9,7 +9,7 @@ body {
 }
 
 ._button {
-    @apply mt-2 bg-blue-600 text-white p-2 rounded-lg cursor-pointer hover:bg-blue-700 flex justify-center;
+    @apply bg-blue-600 text-white p-2 rounded-lg cursor-pointer hover:bg-blue-700 flex justify-center;
 }
 
 ._button:disabled {

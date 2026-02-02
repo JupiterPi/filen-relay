@@ -11,7 +11,7 @@ Filen Relay provides a convenient way to serve your Filen Drive via WebDAV/HTTP/
 ## Usage
 
 ```bash
-docker run -p 80:80 ghcr.io/jupiterpi/filen-relay:main
+docker run -e FILEN_RELAY_ADMIN_EMAIL='your-filen-account@email.com' -p 80:80 ghcr.io/jupiterpi/filen-relay:main
 ```
 
 ## Development

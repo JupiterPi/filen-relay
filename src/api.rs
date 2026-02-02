@@ -183,7 +183,7 @@ pub(crate) async fn login(
             let is_allowed = if allowed_users.is_empty() {
                 true
             } else {
-                allowed_users.contains(&email)
+                allowed_users.contains(&email) || (ADMIN_EMAIL.get() == Some(&email))
             };
             if is_allowed {
                 use dioxus::fullstack::{body::Body, response::Response};
@@ -289,4 +289,40 @@ pub(crate) async fn remove_server(id: String) -> Result<(), anyhow::Error> {
     SERVER_MANAGER
         .update_server_spec(crate::servers::ServerSpecUpdate::Remove(id))
         .await
+}
+
+#[get("/api/allowedUsers", session: session::Session)]
+pub(crate) async fn get_allowed_users() -> Result<Vec<String>, anyhow::Error> {
+    if !session.is_admin {
+        return Err(anyhow::anyhow!("Unauthorized"));
+    }
+    crate::db::get_allowed_users()
+        .map_err(|e| anyhow::anyhow!("Failed to get allowed users: {}", e))
+}
+
+#[post("/api/allowedUsers/add", session: session::Session)]
+pub(crate) async fn add_allowed_user(email: String) -> Result<(), anyhow::Error> {
+    if !session.is_admin {
+        return Err(anyhow::anyhow!("Unauthorized"));
+    }
+    crate::db::add_allowed_user(&email)
+        .map_err(|e| anyhow::anyhow!("Failed to add allowed user: {}", e))
+}
+
+#[post("/api/allowedUsers/remove", session: session::Session)]
+pub(crate) async fn remove_allowed_user(email: String) -> Result<(), anyhow::Error> {
+    if !session.is_admin {
+        return Err(anyhow::anyhow!("Unauthorized"));
+    }
+    crate::db::remove_allowed_user(&email)
+        .map_err(|e| anyhow::anyhow!("Failed to remove allowed user: {}", e))
+}
+
+#[post("/api/allowedUsers/clear", session: session::Session)]
+pub(crate) async fn clear_allowed_users() -> Result<(), anyhow::Error> {
+    if !session.is_admin {
+        return Err(anyhow::anyhow!("Unauthorized"));
+    }
+    crate::db::clear_allowed_users()
+        .map_err(|e| anyhow::anyhow!("Failed to clear allowed users: {}", e))
 }
