@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::common::{ServerSpec, ServerType};
+use crate::common::{ServerId, ServerSpec};
 
 thread_local! {
     pub static DB: rusqlite::Connection = {
@@ -94,37 +94,17 @@ pub(crate) fn get_servers() -> Result<Vec<ServerSpec>> {
     })
 }
 
-pub(crate) fn create_server(
-    name: &str,
-    server_type: ServerType,
-    root: &str,
-    read_only: bool,
-    password: Option<&str>,
-    filen_email: &str,
-    filen_password: &str,
-    filen_2fa_code: Option<&str>,
-) -> Result<ServerSpec> {
+pub(crate) fn create_server(spec: &ServerSpec) -> Result<()> {
     DB.with(|db| {
-        let id = uuid::Uuid::new_v4().to_string();
         db.execute(
             "INSERT INTO servers (id, name, server_type, root, read_only, password, filen_email, filen_password, filen_2fa_code) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            rusqlite::params![id, name, server_type.to_string(), root, read_only, password, filen_email, filen_password, filen_2fa_code],
+            rusqlite::params![spec.id, spec.name, spec.server_type.to_string(), spec.root, spec.read_only, spec.password, spec.filen_email, spec.filen_password, spec.filen_2fa_code],
         )?;
-        Ok(ServerSpec {
-            id,
-            name: name.to_string(),
-            server_type,
-            root: root.to_string(),
-            read_only,
-            password: password.map(|p| p.to_string()),
-            filen_email: filen_email.to_string(),
-            filen_password: filen_password.to_string(),
-            filen_2fa_code: filen_2fa_code.map(|code| code.to_string()),
-        })
+        Ok(())
     })
 }
 
-pub(crate) fn delete_server(id: &str) -> Result<()> {
+pub(crate) fn delete_server(id: &ServerId) -> Result<()> {
     DB.with(|db| {
         db.execute("DELETE FROM servers WHERE id = ?1", rusqlite::params![id])?;
         Ok(())

@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use crate::common::{LogLine, ServerState, ServerType};
+use crate::common::{LogLine, ServerId, ServerState, ServerType};
 #[cfg(feature = "server")]
 use crate::servers::SERVER_MANAGER;
 use anyhow::Context;
@@ -174,7 +174,7 @@ impl axum_reverse_proxy::TargetResolver for ServerResolver {
             "".to_string()
         };
         let server_states = SERVER_MANAGER.get_server_states().borrow().clone();
-        let Some(server_state) = server_states.iter().find(|s| s.spec.id.starts_with(id)) else {
+        let Some(server_state) = server_states.iter().find(|s| s.spec.id.short() == id) else {
             dioxus::logger::tracing::error!("Server not found for id: {}", id);
             return "/error".to_string(); // todo
         };
@@ -341,21 +341,24 @@ pub(crate) async fn add_server(
     password: Option<String>,
 ) -> Result<(), anyhow::Error> {
     SERVER_MANAGER
-        .update_server_spec(crate::servers::ServerSpecUpdate::Add {
-            name,
-            server_type,
-            root,
-            read_only,
-            password,
-            filen_email: session.filen_email,
-            filen_password: session.filen_password,
-            filen_2fa_code: session.filen_2fa_code,
-        })
+        .update_server_spec(crate::servers::ServerSpecUpdate::Add(
+            crate::common::ServerSpec {
+                id: ServerId::new(),
+                name,
+                server_type,
+                root,
+                read_only,
+                password,
+                filen_email: session.filen_email,
+                filen_password: session.filen_password,
+                filen_2fa_code: session.filen_2fa_code,
+            },
+        ))
         .await
 }
 
 #[post("/api/servers/remove", session: session::Session)]
-pub(crate) async fn remove_server(id: String) -> Result<(), anyhow::Error> {
+pub(crate) async fn remove_server(id: ServerId) -> Result<(), anyhow::Error> {
     SERVER_MANAGER
         .get_server_states()
         .borrow()

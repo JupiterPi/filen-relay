@@ -15,6 +15,7 @@ use tokio::sync::oneshot;
 use crate::api::authenticate_filen_client;
 use crate::common::LogLine;
 use crate::common::LogLineContent;
+use crate::common::ServerId;
 use crate::common::ServerSpec;
 use crate::common::ServerState;
 use crate::common::ServerStatus;
@@ -38,17 +39,8 @@ pub(crate) struct ServerManagerApi {
 }
 
 pub(crate) enum ServerSpecUpdate {
-    Add {
-        name: String,
-        server_type: ServerType,
-        root: String,
-        read_only: bool,
-        password: Option<String>,
-        filen_email: String,
-        filen_password: String,
-        filen_2fa_code: Option<String>,
-    },
-    Remove(String),
+    Add(ServerSpec),
+    Remove(ServerId),
 }
 
 type StopServerHandle = oneshot::Sender<()>;
@@ -56,7 +48,7 @@ type StopServerHandle = oneshot::Sender<()>;
 pub(crate) struct ServerManager {
     server_states_tx: tokio::sync::watch::Sender<Vec<ServerState>>,
     logs: Arc<Mutex<HashMap<String, Logs>>>,
-    stop_handles: HashMap<String, StopServerHandle>,
+    stop_handles: HashMap<ServerId, StopServerHandle>,
 }
 
 impl ServerManager {
@@ -103,32 +95,11 @@ impl ServerManager {
             // on update, persist changes to the database and start/stop servers accordingly
             if let Some(update) = updates_rx.recv().await {
                 match update {
-                    ServerSpecUpdate::Add {
-                        name,
-                        server_type,
-                        root,
-                        read_only,
-                        password,
-                        filen_email,
-                        filen_password,
-                        filen_2fa_code,
-                    } => {
-                        tracing::info!("Adding server spec: {}", name);
-                        let spec = match crate::db::create_server(
-                            &name,
-                            server_type,
-                            &root,
-                            read_only,
-                            password.as_deref(),
-                            &filen_email,
-                            &filen_password,
-                            filen_2fa_code.as_deref(),
-                        ) {
-                            Ok(spec) => spec,
-                            Err(e) => {
-                                tracing::error!("Failed to create server spec in database: {}", e);
-                                continue;
-                            }
+                    ServerSpecUpdate::Add(spec) => {
+                        tracing::info!("Adding server spec: {}", spec.name);
+                        if let Err(e) = crate::db::create_server(&spec) {
+                            tracing::error!("Failed to create server spec in database: {}", e);
+                            continue;
                         };
                         if let Err(e) = self.start_server(&spec).await {
                             tracing::error!("Failed to start server: {}", e);
@@ -170,7 +141,7 @@ impl ServerManager {
 
     async fn start_server(&mut self, spec: &ServerSpec) -> Result<()> {
         // setup logs
-        let logs_id = format!("logs_{}", uuid::Uuid::new_v4());
+        let logs_id = format!("logs_{}_{}", spec.id.short(), uuid::Uuid::new_v4());
         let logs = {
             let logs = Logs {
                 server_spec: spec.clone(),

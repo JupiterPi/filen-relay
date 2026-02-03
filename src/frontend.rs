@@ -215,12 +215,12 @@ fn Servers() -> Element {
         Some(servers) if !servers.is_empty() => {
             rsx! {
                 div { class: "flex flex-wrap gap-4",
-                    for (server , server_id_short) in servers.iter().map(|s| (s.clone(), s.spec.id.split_once('-').unwrap().0)) {
+                    for server in servers {
                         div { class: "border p-4 inline-flex flex-col w-64 rounded-lg",
                             h2 { class: "font-bold text-lg", "{server.spec.name}" }
                             p {
                                 "ID: "
-                                span { class: "font-mono", "#{server_id_short}" }
+                                span { class: "font-mono", "#{server.spec.id.short()}" }
                             }
                             p { "Type: {server.spec.server_type}" }
                             p { "Root: {server.spec.root}" }
@@ -244,9 +244,9 @@ fn Servers() -> Element {
                                         "Connect: "
                                         a {
                                             class: "font-mono text-blue-400",
-                                            href: "/s/{server_id_short}/",
+                                            href: "/s/{server.spec.id.short()}/",
                                             target: "_blank",
-                                            "/s/{server_id_short}/"
+                                            "/s/{server.spec.id.short()}/"
                                         }
                                     }
                                 },

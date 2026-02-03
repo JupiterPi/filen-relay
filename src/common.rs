@@ -5,7 +5,7 @@ use strum_macros::EnumIter;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct ServerSpec {
-    pub id: String,
+    pub id: ServerId,
     pub name: String,
     pub server_type: ServerType,
     pub root: String,
@@ -14,6 +14,42 @@ pub(crate) struct ServerSpec {
     pub filen_email: String,
     pub filen_password: String,
     pub filen_2fa_code: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub(crate) struct ServerId(String);
+
+impl ServerId {
+    pub fn new() -> Self {
+        ServerId(uuid::Uuid::new_v4().to_string())
+    }
+
+    pub fn short(&self) -> &str {
+        self.0.split_once('-').unwrap().0
+    }
+}
+
+impl Display for ServerId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[cfg(feature = "server")]
+impl rusqlite::types::FromSql for ServerId {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        let s = String::column_result(value)?;
+        Ok(ServerId(s))
+    }
+}
+
+#[cfg(feature = "server")]
+impl rusqlite::ToSql for ServerId {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        Ok(rusqlite::types::ToSqlOutput::Owned(
+            rusqlite::types::Value::Text(self.0.clone()),
+        ))
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, EnumIter)]
