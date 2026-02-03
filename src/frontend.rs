@@ -223,6 +223,17 @@ fn Servers() -> Element {
                                 span { class: "font-mono", "#{server_id_short}" }
                             }
                             p { "Type: {server.spec.server_type}" }
+                            p { "Root: {server.spec.root}" }
+                            if server.spec.read_only {
+                                p { "Mode: Read-Only" }
+                            } else {
+                                p { "Mode: Read-Write" }
+                            }
+                            if server.spec.password.is_some() {
+                                p { "Password protection" }
+                            } else {
+                                p { "No password protection" }
+                            }
                             match server.status.clone() {
                                 ServerStatus::Starting => rsx! {
                                     p { class: "text-gray-500", "Status: Starting..." }
@@ -287,10 +298,14 @@ fn Servers() -> Element {
 fn CreateServerForm() -> Element {
     let mut name = use_signal(|| "".to_string());
     let mut server_type = use_signal(|| ServerType::Http);
+    let mut root = use_signal(|| "/".to_string());
+    let mut read_only = use_signal(|| false);
+    let mut password = use_signal(|| None::<String>);
+    let password_str = password.read().as_deref().unwrap_or("").to_string();
 
     rsx! {
         form {
-            class: "flex flex-col gap-2 border p-4 rounded-lg",
+            class: "flex flex-col gap-2 border p-4 rounded-lg max-w-80",
             onsubmit: move |e| async move {
                 e.prevent_default();
                 let name_ = name.read().clone();
@@ -299,18 +314,32 @@ fn CreateServerForm() -> Element {
                     return;
                 }
                 let server_type_ = server_type.read().clone();
-                match crate::api::add_server(name_.to_string(), server_type_.clone()).await {
+                let root_ = root.read().clone();
+                let read_only_ = *read_only.read();
+                let password_ = password.read().clone();
+                match crate::api::add_server(
+                        name_.to_string(),
+                        server_type_.clone(),
+                        root_,
+                        read_only_,
+                        password_,
+                    )
+                    .await
+                {
                     Ok(_) => {
                         tracing::info!("Server created successfully");
                         name.set("".to_string());
                         server_type.set(ServerType::Http);
+                        root.set("/".to_string());
+                        read_only.set(false);
+                        password.set(None);
                     }
                     Err(err) => {
                         tracing::error!("Failed to create server: {}", err);
                     }
                 };
             },
-            div { class: "flex items-stretch gap-2",
+            div { class: "flex flex-col gap-2",
                 div {
                     label { "Server Name:" }
                     input {
@@ -331,6 +360,37 @@ fn CreateServerForm() -> Element {
                         for server_type in ServerType::iter() {
                             option { value: server_type.to_string(), "{server_type.to_string()}" }
                         }
+                    }
+                }
+                div {
+                    label { "Root Path:" }
+                    input {
+                        class: "mt-1 _input",
+                        r#type: "text",
+                        placeholder: "/",
+                        value: "{root}",
+                        oninput: move |e| root.set(e.value().clone()),
+                    }
+                }
+                div {
+                    label { class: "flex items-center gap-2",
+                        "Read-Only"
+                        input {
+                            r#type: "checkbox",
+                            checked: *read_only.read(),
+                            onchange: move |e| read_only.set(e.value() == "true"),
+                        }
+                    }
+
+                }
+                div {
+                    label { "Password:" }
+                    input {
+                        class: "mt-1 _input",
+                        r#type: "password",
+                        placeholder: "Password",
+                        value: "{password_str}",
+                        oninput: move |e| password.set(Some(e.value().clone())),
                     }
                 }
             }

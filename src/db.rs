@@ -14,6 +14,9 @@ thread_local! {
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 server_type TEXT NOT NULL,
+                root TEXT NOT NULL,
+                read_only BOOLEAN NOT NULL,
+                password TEXT,
                 filen_email TEXT NOT NULL,
                 filen_password TEXT NOT NULL,
                 filen_2fa_code TEXT
@@ -67,15 +70,18 @@ pub(crate) fn clear_allowed_users() -> Result<()> {
 pub(crate) fn get_servers() -> Result<Vec<ServerSpec>> {
     DB.with(|db| {
         let mut stmt =
-            db.prepare("SELECT id, name, server_type, filen_email, filen_password, filen_2fa_code FROM servers")?;
+            db.prepare("SELECT id, name, server_type, root, read_only, password, filen_email, filen_password, filen_2fa_code FROM servers")?;
         let server_iter = stmt.query_map([], |row| {
             Ok(ServerSpec {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 server_type: row.get::<_, String>(2)?.as_str().into(),
-                filen_email: row.get(3)?,
-                filen_password: row.get(4)?,
-                filen_2fa_code: row.get(5)?,
+                root: row.get(3)?,
+                read_only: row.get(4)?,
+                password: row.get(5)?,
+                filen_email: row.get(6)?,
+                filen_password: row.get(7)?,
+                filen_2fa_code: row.get(8)?,
             })
         })?;
 
@@ -90,6 +96,9 @@ pub(crate) fn get_servers() -> Result<Vec<ServerSpec>> {
 pub(crate) fn create_server(
     name: &str,
     server_type: ServerType,
+    root: &str,
+    read_only: bool,
+    password: Option<&str>,
     filen_email: &str,
     filen_password: &str,
     filen_2fa_code: Option<&str>,
@@ -97,13 +106,16 @@ pub(crate) fn create_server(
     DB.with(|db| {
         let id = uuid::Uuid::new_v4().to_string();
         db.execute(
-            "INSERT INTO servers (id, name, server_type, filen_email, filen_password, filen_2fa_code) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![id, name, server_type.to_string(), filen_email, filen_password, filen_2fa_code],
+            "INSERT INTO servers (id, name, server_type, root, read_only, password, filen_email, filen_password, filen_2fa_code) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![id, name, server_type.to_string(), root, read_only, password, filen_email, filen_password, filen_2fa_code],
         )?;
         Ok(ServerSpec {
             id,
             name: name.to_string(),
             server_type,
+            root: root.to_string(),
+            read_only,
+            password: password.map(|p| p.to_string()),
             filen_email: filen_email.to_string(),
             filen_password: filen_password.to_string(),
             filen_2fa_code: filen_2fa_code.map(|code| code.to_string()),

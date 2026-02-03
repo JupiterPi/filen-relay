@@ -331,11 +331,20 @@ pub(crate) async fn get_logs(logs_id: String) -> Result<Streaming<LogLine, JsonE
 }
 
 #[post("/api/servers/add", session: session::Session)]
-pub(crate) async fn add_server(name: String, server_type: ServerType) -> Result<(), anyhow::Error> {
+pub(crate) async fn add_server(
+    name: String,
+    server_type: ServerType,
+    root: String,
+    read_only: bool,
+    password: Option<String>,
+) -> Result<(), anyhow::Error> {
     SERVER_MANAGER
         .update_server_spec(crate::servers::ServerSpecUpdate::Add {
             name,
             server_type,
+            root,
+            read_only,
+            password,
             filen_email: session.filen_email,
             filen_password: session.filen_password,
             filen_2fa_code: session.filen_2fa_code,

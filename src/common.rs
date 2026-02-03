@@ -8,6 +8,9 @@ pub(crate) struct ServerSpec {
     pub id: String,
     pub name: String,
     pub server_type: ServerType,
+    pub root: String,
+    pub read_only: bool,
+    pub password: Option<String>,
     pub filen_email: String,
     pub filen_password: String,
     pub filen_2fa_code: Option<String>,
@@ -17,6 +20,9 @@ pub(crate) struct ServerSpec {
 pub(crate) enum ServerType {
     Http,
     Webdav,
+    S3,
+    Ftp,
+    Sftp,
 }
 
 impl Display for ServerType {
@@ -24,6 +30,9 @@ impl Display for ServerType {
         match self {
             ServerType::Http => write!(f, "HTTP"),
             ServerType::Webdav => write!(f, "WebDAV"),
+            ServerType::S3 => write!(f, "S3"),
+            ServerType::Ftp => write!(f, "FTP"),
+            ServerType::Sftp => write!(f, "SFTP"),
         }
     }
 }
@@ -33,6 +42,9 @@ impl From<&str> for ServerType {
         match s.to_lowercase().as_str() {
             "http" => ServerType::Http,
             "webdav" => ServerType::Webdav,
+            "s3" => ServerType::S3,
+            "ftp" => ServerType::Ftp,
+            "sftp" => ServerType::Sftp,
             _ => ServerType::Http,
         }
     }

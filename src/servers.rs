@@ -41,6 +41,9 @@ pub(crate) enum ServerSpecUpdate {
     Add {
         name: String,
         server_type: ServerType,
+        root: String,
+        read_only: bool,
+        password: Option<String>,
         filen_email: String,
         filen_password: String,
         filen_2fa_code: Option<String>,
@@ -103,6 +106,9 @@ impl ServerManager {
                     ServerSpecUpdate::Add {
                         name,
                         server_type,
+                        root,
+                        read_only,
+                        password,
                         filen_email,
                         filen_password,
                         filen_2fa_code,
@@ -111,6 +117,9 @@ impl ServerManager {
                         let spec = match crate::db::create_server(
                             &name,
                             server_type,
+                            &root,
+                            read_only,
+                            password.as_deref(),
                             &filen_email,
                             &filen_password,
                             filen_2fa_code.as_deref(),
@@ -234,13 +243,16 @@ impl ServerManager {
             match spec.server_type {
                 ServerType::Http => "http",
                 ServerType::Webdav => "webdav",
+                ServerType::S3 => "s3",
+                ServerType::Ftp => "ftp",
+                ServerType::Sftp => "sftp",
             },
             BasicServerOptions {
                 address: format!(":{}", port),
-                root: None, // todo: make configurable
+                root: Some(spec.root.clone()),
                 user: None,
-                password: None,   // todo: generate one
-                read_only: false, // todo: make configurable
+                password: spec.password.clone(),
+                read_only: spec.read_only,
                 cache_size: None,
                 transfers: None,
             },
