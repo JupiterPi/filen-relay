@@ -4,7 +4,8 @@ use crate::common::{ServerSpec, ServerType};
 
 thread_local! {
     pub static DB: rusqlite::Connection = {
-        let conn = rusqlite::Connection::open("file-relay.db").expect("Failed to open database");
+        let db_dir = crate::api::DB_DIR.get().unwrap().clone().unwrap_or(".".to_string()).trim_end_matches('/').to_string();
+        let conn = rusqlite::Connection::open(format!("{}/file-relay.db", db_dir)).expect("Failed to open database");
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS allowed_users (
                 id INTEGER PRIMARY KEY,

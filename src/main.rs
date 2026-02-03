@@ -17,12 +17,18 @@ struct Args {
         help = "Email of the Filen account with admin privileges"
     )]
     admin_email: String,
+    #[arg(
+        long,
+        env = "FILEN_RELAY_DB_DIR",
+        help = "Directory to store the database file"
+    )]
+    db_dir: Option<String>,
 }
 
 #[cfg(feature = "server")]
 fn main() {
     let args = <Args as clap::Parser>::parse();
-    api::serve(args.admin_email);
+    api::serve(args.admin_email, args.db_dir);
 }
 
 #[cfg(not(feature = "server"))]

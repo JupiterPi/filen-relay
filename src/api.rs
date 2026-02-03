@@ -15,6 +15,7 @@ use filen_sdk_rs::auth::Client;
 use serde::{Deserialize, Serialize};
 
 static ADMIN_EMAIL: OnceLock<String> = OnceLock::new();
+pub static DB_DIR: OnceLock<Option<String>> = OnceLock::new();
 
 #[cfg(feature = "server")]
 mod session {
@@ -111,8 +112,9 @@ mod session {
 }
 
 #[cfg(feature = "server")]
-pub(crate) fn serve(admin_email: String) {
+pub(crate) fn serve(admin_email: String, db_dir: Option<String>) {
     ADMIN_EMAIL.set(admin_email).unwrap();
+    DB_DIR.set(db_dir).unwrap();
     dioxus::serve(|| async move {
         use axum_reverse_proxy::ProxyRouterExt;
 
