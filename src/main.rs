@@ -1,10 +1,8 @@
 mod api;
+#[cfg(feature = "server")]
+mod backend;
 mod common;
-#[cfg(feature = "server")]
-mod db;
 mod frontend;
-#[cfg(feature = "server")]
-mod servers;
 mod util;
 
 #[cfg(feature = "server")]
@@ -28,7 +26,7 @@ struct Args {
 #[cfg(feature = "server")]
 fn main() {
     let args = <Args as clap::Parser>::parse();
-    api::serve(args.admin_email, args.db_dir);
+    backend::serve(args.admin_email, args.db_dir);
 }
 
 #[cfg(not(feature = "server"))]

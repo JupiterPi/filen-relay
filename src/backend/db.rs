@@ -1,10 +1,17 @@
+use std::sync::OnceLock;
+
 use dioxus::prelude::*;
 
-use crate::common::{ServerId, ServerSpec};
+use crate::{
+    backend,
+    common::{ServerId, ServerSpec},
+};
+
+pub static DB_DIR: OnceLock<Option<String>> = OnceLock::new();
 
 thread_local! {
     pub static DB: rusqlite::Connection = {
-        let db_dir = crate::api::DB_DIR.get().unwrap().clone().unwrap_or(".".to_string()).trim_end_matches('/').to_string();
+        let db_dir = backend::DB_DIR.get().unwrap().clone().unwrap_or(".".to_string()).trim_end_matches('/').to_string();
         let conn = rusqlite::Connection::open(format!("{}/file-relay.db", db_dir)).expect("Failed to open database");
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS allowed_users (

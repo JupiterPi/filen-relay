@@ -12,7 +12,8 @@ use tokio::io::BufReader;
 use tokio::select;
 use tokio::sync::oneshot;
 
-use crate::api::authenticate_filen_client;
+use crate::backend::auth;
+use crate::backend::db;
 use crate::common::LogLine;
 use crate::common::LogLineContent;
 use crate::common::ServerId;
@@ -77,7 +78,7 @@ impl ServerManager {
 
     async fn run(mut self, updates_rx: &mut tokio::sync::mpsc::Receiver<ServerSpecUpdate>) {
         // load existing servers from the database and start them
-        let servers = match crate::db::get_servers() {
+        let servers = match db::get_servers() {
             Ok(servers) => servers,
             Err(e) => {
                 tracing::error!("Failed to load server specs from database: {}", e);
@@ -97,7 +98,7 @@ impl ServerManager {
                 match update {
                     ServerSpecUpdate::Add(spec) => {
                         tracing::info!("Adding server spec: {}", spec.name);
-                        if let Err(e) = crate::db::create_server(&spec) {
+                        if let Err(e) = db::create_server(&spec) {
                             tracing::error!("Failed to create server spec in database: {}", e);
                             continue;
                         };
@@ -116,7 +117,7 @@ impl ServerManager {
                                 }
                             }
                         };
-                        match crate::db::delete_server(&id) {
+                        match db::delete_server(&id) {
                             Ok(_) => (),
                             Err(e) => {
                                 tracing::error!(
@@ -194,7 +195,7 @@ impl ServerManager {
         });
 
         // start server process
-        let client = authenticate_filen_client(
+        let client = auth::authenticate_filen_client(
             spec.filen_email.clone(),
             &spec.filen_password,
             spec.filen_2fa_code.clone(),

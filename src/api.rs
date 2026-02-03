@@ -1,187 +1,10 @@
-use std::sync::OnceLock;
-
 use crate::common::{LogLine, ServerId, ServerState, ServerType};
-#[cfg(feature = "server")]
-use crate::servers::SERVER_MANAGER;
-use anyhow::Context;
-#[cfg(feature = "server")]
-use dioxus::server::axum;
-use dioxus::{
-    fullstack::{response::Response, JsonEncoding, Streaming},
-    prelude::*,
-};
-#[cfg(feature = "server")]
-use filen_sdk_rs::auth::Client;
+use dioxus::fullstack::{response::Response, JsonEncoding, Streaming};
+use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-static ADMIN_EMAIL: OnceLock<String> = OnceLock::new();
-pub static DB_DIR: OnceLock<Option<String>> = OnceLock::new();
-
 #[cfg(feature = "server")]
-mod session {
-    use dioxus::{
-        fullstack::extract::{FromRequestParts, Request},
-        prelude::*,
-        server::{
-            axum::{self, middleware::Next},
-            http::request::Parts,
-        },
-    };
-    use std::sync::{LazyLock, Mutex};
-
-    static SESSIONS: LazyLock<Mutex<Vec<Session>>> = LazyLock::new(|| Mutex::new(Vec::new()));
-
-    #[derive(Clone)]
-    pub struct SessionToken(String);
-
-    #[derive(Clone)]
-    pub(crate) struct Session {
-        pub token: String,
-        pub filen_email: String,
-        pub filen_password: String,
-        pub filen_2fa_code: Option<String>,
-        pub is_admin: bool,
-    }
-
-    pub(crate) async fn extract_session_token(
-        mut request: Request,
-        next: Next,
-    ) -> axum::http::Response<axum::body::Body> {
-        if let Some(cookies) = request.headers().get("Cookie") {
-            let token = cookies
-                .to_str()
-                .unwrap_or("")
-                .split(';')
-                .find_map(|cookie| {
-                    let (name, value) = cookie.trim().split_once('=')?;
-                    if name == "Session" {
-                        Some(value.to_string())
-                    } else {
-                        None
-                    }
-                });
-            if let Some(token) = token {
-                request.extensions_mut().insert(SessionToken(token));
-            }
-        }
-        next.run(request).await
-    }
-
-    impl<S> FromRequestParts<S> for Session
-    where
-        S: Send + Sync,
-    {
-        type Rejection = StatusCode;
-
-        async fn from_request_parts(
-            parts: &mut Parts,
-            _state: &S,
-        ) -> Result<Self, Self::Rejection> {
-            parts
-                .extensions
-                .get::<SessionToken>()
-                .and_then(|token| {
-                    SESSIONS
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .find(|s| s.token == token.0)
-                        .cloned()
-                        .ok_or_else(|| anyhow::anyhow!("Invalid session token"))
-                        .ok()
-                })
-                .ok_or(StatusCode::UNAUTHORIZED)
-        }
-    }
-
-    pub(crate) fn create_session(
-        filen_email: &str,
-        filen_password: &str,
-        filen_2fa_code: Option<String>,
-    ) -> Result<String, anyhow::Error> {
-        let token = uuid::Uuid::new_v4().to_string();
-        SESSIONS.lock().unwrap().push(Session {
-            token: token.clone(),
-            filen_email: filen_email.to_string(),
-            filen_password: filen_password.to_string(),
-            filen_2fa_code,
-            is_admin: Some(filen_email.to_string()) == super::ADMIN_EMAIL.get().cloned(),
-        });
-        Ok(token)
-    }
-}
-
-#[cfg(feature = "server")]
-pub(crate) fn serve(admin_email: String, db_dir: Option<String>) {
-    ADMIN_EMAIL.set(admin_email).unwrap();
-    DB_DIR.set(db_dir).unwrap();
-    dioxus::serve(|| async move {
-        use axum_reverse_proxy::ProxyRouterExt;
-
-        SERVER_MANAGER.init(crate::servers::ServerManager::new_api);
-
-        Ok(dioxus::server::router(crate::frontend::App)
-            .layer(dioxus_server::axum::middleware::from_fn(
-                session::extract_session_token,
-            ))
-            .proxy_route(
-                "/s/{id}",
-                ServerResolver {
-                    with_rest: false,
-                    append_slash: false,
-                },
-            )
-            .proxy_route(
-                "/s/{id}/",
-                ServerResolver {
-                    with_rest: false,
-                    append_slash: true,
-                },
-            )
-            .proxy_route(
-                "/s/{id}/{*rest}",
-                ServerResolver {
-                    with_rest: true,
-                    append_slash: false,
-                },
-            ))
-    });
-}
-
-#[cfg(feature = "server")]
-#[derive(Clone)]
-struct ServerResolver {
-    with_rest: bool,
-    append_slash: bool,
-}
-
-#[cfg(feature = "server")]
-impl axum_reverse_proxy::TargetResolver for ServerResolver {
-    fn resolve(
-        &self,
-        _req: &axum::http::Request<axum::body::Body>,
-        params: &[(String, String)],
-    ) -> String {
-        let id = params[0].1.as_str();
-        if id.len() < 4 {
-            return "https://postman-echo.com/get/status/404".to_string();
-        }
-        let rest = if self.with_rest {
-            "/".to_string() + params.get(1).map(|(_, v)| v.as_str()).unwrap_or("")
-        } else {
-            "".to_string()
-        };
-        let server_states = SERVER_MANAGER.get_server_states().borrow().clone();
-        let Some(server_state) = server_states.iter().find(|s| s.spec.id.short() == id) else {
-            return "https://postman-echo.com/get/status/404".to_string();
-        };
-        let crate::common::ServerStatus::Running { port, .. } = server_state.status else {
-            return "https://postman-echo.com/get/status/404".to_string();
-        };
-        let extra_slash = if self.append_slash { "/" } else { "" };
-        format!("http://127.0.0.1:{}{}{}", port, rest, extra_slash)
-    }
-}
+use crate::backend::{auth, db, server_manager, server_manager::SERVER_MANAGER};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct User {
@@ -189,47 +12,12 @@ pub(crate) struct User {
     pub is_admin: bool,
 }
 
-#[post("/api/user", session: session::Session)]
+#[post("/api/user", session: auth::Session)]
 pub(crate) async fn get_user() -> Result<User> {
     Ok(User {
         email: session.filen_email,
         is_admin: session.is_admin,
     })
-}
-
-#[cfg(feature = "server")]
-pub(crate) async fn authenticate_filen_client(
-    email: String,
-    password: &str,
-    two_factor_code: Option<String>,
-) -> Result<Client, anyhow::Error> {
-    use filen_sdk_rs::ErrorKind;
-    use filen_types::error::ResponseError;
-    match Client::login(
-        email.clone(),
-        password,
-        two_factor_code.as_deref().unwrap_or("XXXXXX"),
-    )
-    .await
-    {
-        Err(e) if e.kind() == ErrorKind::Server => match e.downcast::<ResponseError>() {
-            Ok(ResponseError::ApiError { code, .. }) => {
-                if code.as_deref() == Some("enter_2fa") {
-                    Err(anyhow::anyhow!("2FA required"))
-                } else if code.as_deref() == Some("email_or_password_wrong") {
-                    Err(anyhow::anyhow!("Email or password wrong"))
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Failed to log in (code {})",
-                        code.as_deref().unwrap_or("")
-                    ))
-                }
-            }
-            Err(e) => Err(anyhow::anyhow!(e)).context("Failed to log in"),
-        },
-        Err(e) => Err(anyhow::anyhow!(e)).context("Failed to log in"),
-        Ok(client) => Ok(client),
-    }
 }
 
 #[post("/api/login")]
@@ -238,32 +26,15 @@ pub(crate) async fn login(
     password: String,
     two_factor_code: Option<String>,
 ) -> Result<Response, anyhow::Error> {
-    match authenticate_filen_client(email.clone(), &password, two_factor_code.clone()).await {
-        Err(e) => Err(anyhow::anyhow!(e)).context("Failed to log in"),
-        Ok(_client) => {
-            let allowed_users = crate::db::get_allowed_users()
-                .map_err(|e| anyhow::anyhow!("Failed to get allowed users from database: {}", e))?;
-            let is_allowed = if allowed_users.is_empty() {
-                true
-            } else {
-                allowed_users.contains(&email) || (ADMIN_EMAIL.get() == Some(&email))
-            };
-            if is_allowed {
-                use dioxus::fullstack::{body::Body, response::Response};
-
-                let token = session::create_session(&email, &password, two_factor_code.clone())?;
-                Ok(Response::builder()
-                    .header("Set-Cookie", format!("Session={}; HttpOnly; Path=/", token))
-                    .body(Body::empty())
-                    .unwrap())
-            } else {
-                Err(anyhow::anyhow!("User is not allowed"))
-            }
-        }
-    }
+    let token = auth::login_and_get_session_token(email, password, two_factor_code).await?;
+    use dioxus::fullstack::{body::Body, response::Response};
+    Ok(Response::builder()
+        .header("Set-Cookie", format!("Session={}; HttpOnly; Path=/", token))
+        .body(Body::empty())
+        .unwrap())
 }
 
-#[get("/api/servers", session: session::Session)]
+#[get("/api/servers", session: auth::Session)]
 pub(crate) async fn get_servers() -> Result<Streaming<Vec<ServerState>, JsonEncoding>> {
     Ok(Streaming::spawn(move |tx| async move {
         let send_server_states = || {
@@ -299,7 +70,7 @@ pub(crate) async fn get_servers() -> Result<Streaming<Vec<ServerState>, JsonEnco
     }))
 }
 
-#[get("/api/logs/{logs_id}", session: session::Session)]
+#[get("/api/logs/{logs_id}", session: auth::Session)]
 pub(crate) async fn get_logs(logs_id: String) -> Result<Streaming<LogLine, JsonEncoding>> {
     let Some(logs) = SERVER_MANAGER.get_logs(&logs_id) else {
         return Err(anyhow::anyhow!("Logs not found"))?;
@@ -326,7 +97,7 @@ pub(crate) async fn get_logs(logs_id: String) -> Result<Streaming<LogLine, JsonE
     }))
 }
 
-#[post("/api/servers/add", session: session::Session)]
+#[post("/api/servers/add", session: auth::Session)]
 pub(crate) async fn add_server(
     name: String,
     server_type: ServerType,
@@ -335,7 +106,7 @@ pub(crate) async fn add_server(
     password: Option<String>,
 ) -> Result<(), anyhow::Error> {
     SERVER_MANAGER
-        .update_server_spec(crate::servers::ServerSpecUpdate::Add(
+        .update_server_spec(server_manager::ServerSpecUpdate::Add(
             crate::common::ServerSpec {
                 id: ServerId::new(),
                 name,
@@ -351,7 +122,7 @@ pub(crate) async fn add_server(
         .await
 }
 
-#[post("/api/servers/remove", session: session::Session)]
+#[post("/api/servers/remove", session: auth::Session)]
 pub(crate) async fn remove_server(id: ServerId) -> Result<(), anyhow::Error> {
     SERVER_MANAGER
         .get_server_states()
@@ -362,42 +133,39 @@ pub(crate) async fn remove_server(id: ServerId) -> Result<(), anyhow::Error> {
         })
         .ok_or_else(|| anyhow::anyhow!("Server not found or not owned by user"))?;
     SERVER_MANAGER
-        .update_server_spec(crate::servers::ServerSpecUpdate::Remove(id))
+        .update_server_spec(server_manager::ServerSpecUpdate::Remove(id))
         .await
 }
 
-#[get("/api/allowedUsers", session: session::Session)]
+#[get("/api/allowedUsers", session: auth::Session)]
 pub(crate) async fn get_allowed_users() -> Result<Vec<String>, anyhow::Error> {
     if !session.is_admin {
         return Err(anyhow::anyhow!("Unauthorized"));
     }
-    crate::db::get_allowed_users()
-        .map_err(|e| anyhow::anyhow!("Failed to get allowed users: {}", e))
+    db::get_allowed_users().map_err(|e| anyhow::anyhow!("Failed to get allowed users: {}", e))
 }
 
-#[post("/api/allowedUsers/add", session: session::Session)]
+#[post("/api/allowedUsers/add", session: auth::Session)]
 pub(crate) async fn add_allowed_user(email: String) -> Result<(), anyhow::Error> {
     if !session.is_admin {
         return Err(anyhow::anyhow!("Unauthorized"));
     }
-    crate::db::add_allowed_user(&email)
-        .map_err(|e| anyhow::anyhow!("Failed to add allowed user: {}", e))
+    db::add_allowed_user(&email).map_err(|e| anyhow::anyhow!("Failed to add allowed user: {}", e))
 }
 
-#[post("/api/allowedUsers/remove", session: session::Session)]
+#[post("/api/allowedUsers/remove", session: auth::Session)]
 pub(crate) async fn remove_allowed_user(email: String) -> Result<(), anyhow::Error> {
     if !session.is_admin {
         return Err(anyhow::anyhow!("Unauthorized"));
     }
-    crate::db::remove_allowed_user(&email)
+    db::remove_allowed_user(&email)
         .map_err(|e| anyhow::anyhow!("Failed to remove allowed user: {}", e))
 }
 
-#[post("/api/allowedUsers/clear", session: session::Session)]
+#[post("/api/allowedUsers/clear", session: auth::Session)]
 pub(crate) async fn clear_allowed_users() -> Result<(), anyhow::Error> {
     if !session.is_admin {
         return Err(anyhow::anyhow!("Unauthorized"));
     }
-    crate::db::clear_allowed_users()
-        .map_err(|e| anyhow::anyhow!("Failed to clear allowed users: {}", e))
+    db::clear_allowed_users().map_err(|e| anyhow::anyhow!("Failed to clear allowed users: {}", e))
 }
