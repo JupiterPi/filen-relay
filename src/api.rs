@@ -159,14 +159,12 @@ struct ServerResolver {
 impl axum_reverse_proxy::TargetResolver for ServerResolver {
     fn resolve(
         &self,
-        req: &axum::http::Request<axum::body::Body>,
+        _req: &axum::http::Request<axum::body::Body>,
         params: &[(String, String)],
     ) -> String {
-        dioxus::logger::tracing::info!("Resolving server for request: {:?}", req.uri());
         let id = params[0].1.as_str();
         if id.len() < 4 {
-            dioxus::logger::tracing::error!("Invalid server id: {}", id);
-            return "/error".to_string(); // todo
+            return "https://postman-echo.com/get/status/404".to_string();
         }
         let rest = if self.with_rest {
             "/".to_string() + params.get(1).map(|(_, v)| v.as_str()).unwrap_or("")
@@ -175,19 +173,15 @@ impl axum_reverse_proxy::TargetResolver for ServerResolver {
         };
         let server_states = SERVER_MANAGER.get_server_states().borrow().clone();
         let Some(server_state) = server_states.iter().find(|s| s.spec.id.short() == id) else {
-            dioxus::logger::tracing::error!("Server not found for id: {}", id);
-            return "/error".to_string(); // todo
+            return "https://postman-echo.com/get/status/404".to_string();
         };
         let crate::common::ServerStatus::Running { port, .. } = server_state.status else {
-            dioxus::logger::tracing::error!("Server not running for id: {}", id);
-            return "/offline".to_string(); // todo
+            return "https://postman-echo.com/get/status/404".to_string();
         };
         let extra_slash = if self.append_slash { "/" } else { "" };
-        dioxus::logger::tracing::info!("http://127.0.0.1:{}{}{}", port, rest, extra_slash); // todo tmp
         format!("http://127.0.0.1:{}{}{}", port, rest, extra_slash)
     }
 }
-// todo: generally clean this up ^
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct User {

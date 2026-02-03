@@ -14,7 +14,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 filen-sdk-rs = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c", optional = true }
 filen-rclone-wrapper = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c", optional = true }
 filen-types = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c", optional = true }
-uuid = "1.20.0"
+uuid = { version = "1.20.0", features = ["v4", "js"] }
 strum = "0.27.2"
 strum_macros = "0.27.2"
 tokio = { version = "1.49.0", features = ["macros"], optional = true }
