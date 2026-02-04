@@ -24,6 +24,7 @@ clap = { version = "4.5.56", features = ["derive", "env"] }
 axum-reverse-proxy = { version = "1.1.1", features = [
     "native-tls",
 ], optional = true }
+wasm-cookies = "=0.2.1"
 
 [features]
 default = ["web", "server"]

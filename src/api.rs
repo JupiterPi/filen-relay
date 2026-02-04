@@ -34,6 +34,15 @@ pub(crate) async fn login(
         .unwrap())
 }
 
+#[post("/api/logout")]
+pub(crate) async fn logout() -> Result<Response> {
+    use dioxus::fullstack::{body::Body, response::Response};
+    Ok(Response::builder()
+        .header("Set-Cookie", "Session=; HttpOnly; Path=/")
+        .body(Body::empty())
+        .unwrap())
+}
+
 #[get("/api/servers", session: auth::Session)]
 pub(crate) async fn get_servers() -> Result<Streaming<Vec<ServerState>, JsonEncoding>> {
     Ok(Streaming::spawn(move |tx| async move {
