@@ -27,5 +27,7 @@ ENV PORT=80
 ENV IP=0.0.0.0
 EXPOSE 80
 WORKDIR /usr/local/app
+ADD https://github.com/FilenCloudDienste/filen-rclone/releases/download/v1.70.0-filen.14/rclone-v1.70.0-filen.14-linux-amd64 /usr/local/app/rclone_configs/
+RUN chmod +x /usr/local/app/rclone_configs/rclone-v1.70.0-filen.14-linux-amd64
 COPY --from=builder /app/target/dx/filen-relay/release/web/ /usr/local/app
 ENTRYPOINT [ "/usr/local/app/filen-relay" ]
