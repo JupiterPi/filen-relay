@@ -1,4 +1,4 @@
-mod manage_allowed_users_page;
+mod manage_allowed_users;
 mod servers;
 use std::ops::Deref;
 
@@ -8,7 +8,7 @@ use dioxus::{
 };
 
 use crate::frontend::{
-    manage_allowed_users_page::ManageAllowedUsers,
+    manage_allowed_users::ManageAllowedUsers,
     servers::{CreateServerForm, Logs, Servers},
 };
 
