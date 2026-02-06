@@ -6,7 +6,6 @@ use anyhow::{Context, Result};
 use dioxus::logger::tracing;
 use filen_rclone_wrapper::rclone_installation::RcloneInstallationConfig;
 use filen_rclone_wrapper::serve::BasicServerOptions;
-use port_check::free_local_ipv4_port;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::BufReader;
 use tokio::select;
@@ -14,6 +13,7 @@ use tokio::sync::oneshot;
 
 use crate::backend::auth;
 use crate::backend::db::DB;
+use crate::backend::READY_ALL_SERVERS;
 use crate::common::LogLine;
 use crate::common::LogLineContent;
 use crate::common::ServerId;
@@ -90,6 +90,7 @@ impl ServerManager {
                 tracing::error!("Failed to start server {}: {}", server.name, e);
             }
         }
+        *READY_ALL_SERVERS.lock().unwrap() = true;
 
         loop {
             // listen for updates
@@ -205,7 +206,7 @@ impl ServerManager {
         let config_dir = std::env::current_dir()
             .context("Failed to get current directory")?
             .join("rclone_configs");
-        let port = free_local_ipv4_port().context("Failed to find free local port")?;
+        let port = port_check::free_local_ipv4_port().context("Failed to find free local port")?;
         let mut server = filen_rclone_wrapper::serve::start_basic_server(
             &client,
             &RcloneInstallationConfig {

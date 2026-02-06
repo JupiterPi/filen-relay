@@ -1,3 +1,6 @@
+use std::sync::Mutex;
+
+use dioxus::prelude::*;
 use dioxus::server::axum;
 
 use crate::{
@@ -110,5 +113,17 @@ impl axum_reverse_proxy::TargetResolver for ServerResolver {
         };
         let extra_slash = if self.append_slash { "/" } else { "" };
         format!("http://127.0.0.1:{}{}{}", port, rest, extra_slash)
+    }
+}
+
+pub(crate) static READY_ALL_SERVERS: Mutex<bool> = Mutex::new(false);
+
+#[get("/api/ready")]
+pub(crate) async fn ready() -> Result<(), axum::http::StatusCode> {
+    let ready = *READY_ALL_SERVERS.lock().unwrap();
+    if ready {
+        Ok(())
+    } else {
+        Err(axum::http::StatusCode::SERVICE_UNAVAILABLE)
     }
 }
