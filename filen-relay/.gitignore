@@ -1,0 +1,6 @@
+# ignore tailwind output
+/assets/tailwind.css
+
+# ignore application data
+*.db
+rclone_configs

@@ -1,3 +1,6 @@
+# must be built from the filen-rs repository root
+# cd .. && docker build -f filen-relay/Dockerfile . -t filen-relay && cd filen-relay
+
 # see https://dioxuslabs.com/learn/0.7/tutorial/deploy#building-a-dockerfile
 # using nightly-2025-08-14 toolchain as per rust-toolchain.toml
 
@@ -19,7 +22,7 @@ RUN cargo binstall dioxus-cli --root /.cargo -y --force
 ENV PATH="/.cargo/bin:$PATH"
 
 COPY . .
-RUN dx bundle --web --release
+RUN cd filen-relay && dx bundle --web --release
 
 FROM debian:trixie-slim AS runtime
 RUN apt-get update && apt-get install -y ca-certificates
