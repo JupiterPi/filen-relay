@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "server")]
-use crate::backend::{auth, db, server_manager, server_manager::SERVER_MANAGER};
+use crate::backend::{auth, db::DB, server_manager, server_manager::SERVER_MANAGER};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct User {
@@ -151,7 +151,8 @@ pub(crate) async fn get_allowed_users() -> Result<Vec<String>, anyhow::Error> {
     if !session.is_admin {
         return Err(anyhow::anyhow!("Unauthorized"));
     }
-    db::get_allowed_users().map_err(|e| anyhow::anyhow!("Failed to get allowed users: {}", e))
+    DB.get_allowed_users()
+        .map_err(|e| anyhow::anyhow!("Failed to get allowed users: {}", e))
 }
 
 #[post("/api/allowedUsers/add", session: auth::Session)]
@@ -159,7 +160,9 @@ pub(crate) async fn add_allowed_user(email: String) -> Result<(), anyhow::Error>
     if !session.is_admin {
         return Err(anyhow::anyhow!("Unauthorized"));
     }
-    db::add_allowed_user(&email).map_err(|e| anyhow::anyhow!("Failed to add allowed user: {}", e))
+    DB.add_allowed_user(&email)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to add allowed user: {}", e))
 }
 
 #[post("/api/allowedUsers/remove", session: auth::Session)]
@@ -167,7 +170,8 @@ pub(crate) async fn remove_allowed_user(email: String) -> Result<(), anyhow::Err
     if !session.is_admin {
         return Err(anyhow::anyhow!("Unauthorized"));
     }
-    db::remove_allowed_user(&email)
+    DB.remove_allowed_user(&email)
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to remove allowed user: {}", e))
 }
 
@@ -176,5 +180,7 @@ pub(crate) async fn clear_allowed_users() -> Result<(), anyhow::Error> {
     if !session.is_admin {
         return Err(anyhow::anyhow!("Unauthorized"));
     }
-    db::clear_allowed_users().map_err(|e| anyhow::anyhow!("Failed to clear allowed users: {}", e))
+    DB.clear_allowed_users()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to clear allowed users: {}", e))
 }

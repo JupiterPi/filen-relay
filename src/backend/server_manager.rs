@@ -13,7 +13,7 @@ use tokio::select;
 use tokio::sync::oneshot;
 
 use crate::backend::auth;
-use crate::backend::db;
+use crate::backend::db::DB;
 use crate::common::LogLine;
 use crate::common::LogLineContent;
 use crate::common::ServerId;
@@ -78,7 +78,7 @@ impl ServerManager {
 
     async fn run(mut self, updates_rx: &mut tokio::sync::mpsc::Receiver<ServerSpecUpdate>) {
         // load existing servers from the database and start them
-        let servers = match db::get_servers() {
+        let servers = match DB.get_servers() {
             Ok(servers) => servers,
             Err(e) => {
                 tracing::error!("Failed to load server specs from database: {}", e);
@@ -98,7 +98,7 @@ impl ServerManager {
                 match update {
                     ServerSpecUpdate::Add(spec) => {
                         tracing::info!("Adding server spec: {}", spec.name);
-                        if let Err(e) = db::create_server(&spec) {
+                        if let Err(e) = DB.create_server(&spec).await {
                             tracing::error!("Failed to create server spec in database: {}", e);
                             continue;
                         };
@@ -117,7 +117,7 @@ impl ServerManager {
                                 }
                             }
                         };
-                        match db::delete_server(&id) {
+                        match DB.delete_server(&id).await {
                             Ok(_) => (),
                             Err(e) => {
                                 tracing::error!(

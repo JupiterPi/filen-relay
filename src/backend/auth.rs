@@ -13,7 +13,7 @@ use dioxus::{
 use filen_sdk_rs::auth::Client;
 use std::sync::{LazyLock, Mutex};
 
-use crate::backend::db;
+use crate::backend::db::DB;
 
 static SESSIONS: LazyLock<Mutex<Vec<Session>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
@@ -126,7 +126,8 @@ pub(crate) async fn login_and_get_session_token(
     match authenticate_filen_client(email.clone(), &password, two_factor_code.clone()).await {
         Err(e) => Err(e.context("Failed to log in")),
         Ok(_client) => {
-            let allowed_users = db::get_allowed_users()
+            let allowed_users = DB
+                .get_allowed_users()
                 .map_err(|e| anyhow::anyhow!("Failed to get allowed users from database: {}", e))?;
             let is_allowed = if allowed_users.is_empty() {
                 true

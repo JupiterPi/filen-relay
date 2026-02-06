@@ -1,48 +1,82 @@
 use dioxus::server::axum;
 
-use crate::backend::{
-    auth::ADMIN_EMAIL,
-    db::DB_DIR,
-    server_manager::{ServerManager, SERVER_MANAGER},
+use crate::{
+    backend::{
+        auth::ADMIN_EMAIL,
+        db::{DbViaOfflineOrRemoteFile, DB},
+        server_manager::{ServerManager, SERVER_MANAGER},
+    },
+    Args,
 };
 
 pub(crate) mod auth;
 pub(crate) mod db;
 pub(crate) mod server_manager;
 
-pub(crate) fn serve(admin_email: String, db_dir: Option<String>) {
-    ADMIN_EMAIL.set(admin_email).unwrap();
-    DB_DIR.set(db_dir).unwrap();
-    dioxus::serve(|| async move {
-        use axum_reverse_proxy::ProxyRouterExt;
+pub(crate) fn serve(args: Args) {
+    dioxus::serve(move || {
+        let args = args.clone();
+        async move {
+            let (admin_email, db) = match (
+                    args.admin_email,
+                    args.admin_password,
+                    args.admin_2fa_code,
+                    args.admin_auth_config,
+                    args.db_dir,
+                ) {
+                    (Some(email), _, _, _, Some(db_dir)) => {
+                        let db = DbViaOfflineOrRemoteFile::new_from_offline_location(Some(&db_dir)).await;
+                        db.map(|db| (email, db))
+                    }
+                    (_, _, _, Some(auth_config), _) => {
+                        DbViaOfflineOrRemoteFile::new_from_auth_config(auth_config).await
+                    }
+                    (Some(email), Some(password), two_fa_code, _, _) => {
+                        let db = DbViaOfflineOrRemoteFile::new_from_email_and_password(
+                            email.clone(),
+                            &password,
+                            two_fa_code.as_deref(),
+                        )
+                        .await;
+                        db.map(|db| (email, db))
+                    }
+                    _ => panic!(
+                        "Either admin email and local db dir, email/password or auth config must be provided"
+                    ),
+                }.expect("Failed to initialize database");
+            ADMIN_EMAIL.set(admin_email).unwrap();
+            DB.init(db);
 
-        SERVER_MANAGER.init(ServerManager::new_api);
+            use axum_reverse_proxy::ProxyRouterExt;
 
-        Ok(dioxus::server::router(crate::frontend::App)
-            .layer(axum::middleware::from_fn(
-                auth::middleware_extract_session_token,
-            ))
-            .proxy_route(
-                "/s/{id}",
-                ServerResolver {
-                    with_rest: false,
-                    append_slash: false,
-                },
-            )
-            .proxy_route(
-                "/s/{id}/",
-                ServerResolver {
-                    with_rest: false,
-                    append_slash: true,
-                },
-            )
-            .proxy_route(
-                "/s/{id}/{*rest}",
-                ServerResolver {
-                    with_rest: true,
-                    append_slash: false,
-                },
-            ))
+            SERVER_MANAGER.init(ServerManager::new_api());
+
+            Ok(dioxus::server::router(crate::frontend::App)
+                .layer(axum::middleware::from_fn(
+                    auth::middleware_extract_session_token,
+                ))
+                .proxy_route(
+                    "/s/{id}",
+                    ServerResolver {
+                        with_rest: false,
+                        append_slash: false,
+                    },
+                )
+                .proxy_route(
+                    "/s/{id}/",
+                    ServerResolver {
+                        with_rest: false,
+                        append_slash: true,
+                    },
+                )
+                .proxy_route(
+                    "/s/{id}/{*rest}",
+                    ServerResolver {
+                        with_rest: true,
+                        append_slash: false,
+                    },
+                ))
+        }
     });
 }
 

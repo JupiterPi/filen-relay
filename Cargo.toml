@@ -14,6 +14,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 filen-sdk-rs = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c", optional = true }
 filen-rclone-wrapper = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c", optional = true }
 filen-types = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c", optional = true }
+filen-cli = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c", optional = true }
 uuid = { version = "1.20.0", features = ["v4", "js"] }
 strum = "0.27.2"
 strum_macros = "0.27.2"
@@ -37,4 +38,5 @@ server = [
     "filen-types",
     "tokio",
     "axum-reverse-proxy",
+    "filen-cli",
 ]

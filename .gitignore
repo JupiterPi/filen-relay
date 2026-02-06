@@ -12,3 +12,5 @@
 # ignore application data
 *.db
 rclone_configs
+
+filen-cli-auth-config.env

@@ -14,11 +14,8 @@ impl<T> UnwrapOnceLock<T> {
 }
 
 impl<T> UnwrapOnceLock<T> {
-    pub fn init<F>(&self, init: F)
-    where
-        F: FnOnce() -> T,
-    {
-        let _ = self.0.get_or_init(init);
+    pub fn init(&self, val: T) {
+        let _ = self.0.set(val);
     }
 }
 
