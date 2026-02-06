@@ -42,7 +42,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      
+          file: filen-relay/Dockerfile
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
