@@ -1,0 +1,20 @@
+[package]
+name = "filen-relay-deployer"
+version = "0.1.0"
+authors = ["JupiterPi <hello@jupiterpi.de>"]
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.57", features = ["derive", "env"] }
+cliclack = "0.3.8"
+filen-sdk-rs = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c" }
+filen-cli = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c" }
+filen-types = { git = "https://github.com/FilenCloudDienste/filen-rs", rev = "da5612f70d77245f63c0c5be8a11b5fcc09e193c" }
+tokio = { version = "1.49.0", features = ["macros"] }
+anyhow = "1.0.101"
+reqwest = { version = "0.13.2", features = ["json"] }
+serde = "1.0.228"
+serde_json = "1.0.149"
+log = "0.4.29"
+env_logger = "0.11.8"
+uuid = "1.20.0"

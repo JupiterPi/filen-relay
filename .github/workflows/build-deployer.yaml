@@ -1,0 +1,54 @@
+name: Build and release Deployer
+
+permissions:
+  contents: write
+
+on:
+  release: 
+    types: [published]
+  
+jobs:
+  build-binaries:
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.platform }}
+    defaults:
+      run:
+        shell: bash # on windows too
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-08-14
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ""
+          shared-key: cargo-build-release-cli
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install C++ build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang libc++-dev libc++abi-dev
+          sudo apt-get install musl-tools
+      - name: Run build
+        run: cargo build --bin filen-relay-deployer --release --verbose --locked
+      - name: Prepare artifact
+        run: |
+          mkdir -p ./artifact
+          if [[ $platform =~ ^windows.*$ ]]; then
+            cp ./target/release/filen-relay-deployer.exe ./artifact/filen-relay-deployer-$version-$platform.exe
+          else
+            cp ./target/release/filen-relay-deployer ./artifact/filen-relay-deployer-$version-$platform
+            chmod +x ./artifact/filen-relay-deployer-$version-$platform
+          fi
+        env:
+          version: ${{ github.event.release.tag_name }}
+          platform: ${{ matrix.platform }}
+      - name: Attach binaries to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifact/filen-relay-deployer-*
