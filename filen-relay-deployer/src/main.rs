@@ -7,8 +7,10 @@ use filen_types::error::ResponseError;
 mod scaleway_api;
 
 #[derive(Parser, Clone)]
-#[command(version)]
+#[command()]
 struct Args {
+    #[arg(long, help = "Ignore update check")]
+    ignore_updates: bool,
     #[arg(
         long,
         env = "FILEN_RELAY_ADMIN_EMAIL",
@@ -63,17 +65,40 @@ struct Args {
 async fn main() -> Result<()> {
     env_logger::init();
     if let Err(e) = main_().await {
-        cliclack::log::error(format!("Error: {}", e))?;
+        log::error!("Error: {}", e);
+        std::process::exit(1);
     }
     Ok(())
 }
 
 async fn main_() -> Result<()> {
     let args = Args::parse();
+    let filen_relay_version = option_env!("FILEN_RELAY_VERSION").unwrap_or("0.0.0");
 
-    cliclack::intro("Filen Relay Deployer")?;
+    // check if there's an update for filen-relay-deployer
+    if !args.ignore_updates {
+        let response = reqwest::Client::new()
+            .get("https://api.github.com/repos/JupiterPi/filen-relay/releases/latest")
+            .header(reqwest::header::USER_AGENT, "filen-relay-deployer")
+            .send()
+            .await?;
+        let latest_version = response
+            .json::<serde_json::Value>()
+            .await?
+            .get("tag_name")
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| anyhow!("Failed to get tag_name from GitHub API response"))?;
+        if latest_version.trim_start_matches('v') != filen_relay_version.trim_start_matches('v') {
+            cliclack::log::info(format!(
+                "A new version of filen-relay-deployer is available: {} (current: {})",
+                latest_version, filen_relay_version
+            ))?;
+            return Ok(());
+        }
+    }
 
-    // todo: check if there's an update for filen-relay-deployer
+    cliclack::intro(format!("Filen Relay v{} Deployer", filen_relay_version,))?;
 
     // login to admin Filen account, export auth config
     let admin_email: String = match args.admin_email {
@@ -122,16 +147,18 @@ async fn main_() -> Result<()> {
         .interact()?
     {
         "scaleway" => {
-            deploy_to_scaleway(client, args).await?;
+            deploy_to_scaleway(filen_relay_version, client, args).await?;
         }
         _ => unimplemented!(),
     }
 
     cliclack::outro("Deployed successfully!")?;
     Ok(())
+
+    // todo: keep open
 }
 
-async fn deploy_to_scaleway(client: Client, args: Args) -> Result<()> {
+async fn deploy_to_scaleway(filen_relay_version: &str, client: Client, args: Args) -> Result<()> {
     // enter api key, organization id, region
     let api_key: String = match args.scaleway_api_key_secret {
         Some(ref api_key) => api_key.clone(),
@@ -221,7 +248,7 @@ async fn deploy_to_scaleway(client: Client, args: Args) -> Result<()> {
         .create_container(&serde_json::json!({
             "namespace_id": namespace.id,
             "name": container_name,
-            "registry_image": "ghcr.io/jupiterpi/filen-relay:main",
+            "registry_image": format!("ghcr.io/jupiterpi/filen-relay:{}", filen_relay_version),
             "min_scale": 0,
             "max_scale": 1,
             "port": 80,

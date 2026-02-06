@@ -8,7 +8,18 @@ on:
     types: [published]
   
 jobs:
+  check-tags:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check tags
+        run: |
+          grep -q "version = \"$version\"" filen-relay/Cargo.toml
+          grep -q "version = \"$version\"" filen-relay-deployer/Cargo.toml
+        env:
+          version: ${{ github.event.release.tag_name }}
   build-binaries:
+    needs: check-tags
     strategy:
       matrix:
         platform: [ubuntu-latest, windows-latest, macos-latest]
