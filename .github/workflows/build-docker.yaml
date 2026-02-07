@@ -3,8 +3,8 @@ name: Build Docker
 # see https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images#publishing-images-to-github-packages
 
 on:
-  push:
-    branches: ["main"]
+  release:
+    types: [published]
 
 env:
   REGISTRY: ghcr.io
